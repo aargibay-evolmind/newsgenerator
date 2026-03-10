@@ -12,7 +12,8 @@ services:
 
   frontend:
     build:
-      context: ./docker/node
+      context: ./frontend
+      dockerfile: ../docker/node/Dockerfile
       args:
         UID: 1000
         GID: 1000
@@ -20,6 +21,7 @@ services:
     command: npm run dev
     volumes:
       - ./frontend:/var/www/frontend
+      - /var/www/frontend/node_modules 
     extra_hosts:
       - "backend.gen-notices.test:host-gateway"
 

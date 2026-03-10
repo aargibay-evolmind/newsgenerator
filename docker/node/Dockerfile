@@ -16,3 +16,6 @@ WORKDIR /var/www/frontend
 
 # Use the customized user
 USER node
+
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci
