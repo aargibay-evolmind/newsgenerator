@@ -32,7 +32,12 @@ trigger: always_on
     * **Constraint**: Do NOT add `eslint` dependencies or `lint` scripts to sub-packages.
 
 * **Database**: Mysql 8
-  * Stores the data generated in the frontend.
+  * Stores the data generated from the frontend.
 
 * **Backend**: Symfony 8
-  * Used for CRUD operations on the database.
+  * **Scope**: `./backend`.
+  * Headless CRUD API server.
+
+* **Web server**: NGINX
+  * **Scope**: `./docker/nginx`.
+  * Acts as a reverse proxy and unified entry point for the application. It routes client requests by serving the Vue frontend and proxying all data requests to the Symfony backend.
