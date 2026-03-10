@@ -23,7 +23,7 @@ services:
       - ./frontend:/var/www/frontend
       - /var/www/frontend/node_modules 
     extra_hosts:
-      - "backend.gen-notices.test:host-gateway"
+      - "backend.newsgenerator.test:host-gateway"
 
   nginx:
     build:
