@@ -15,6 +15,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@google/genai": "^1.44.0",
     "@tanstack/vue-query": "^5.92.9",
     "pinia": "^3.0.4",
     "vue": "^3.5.29",
