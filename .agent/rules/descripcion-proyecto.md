@@ -4,7 +4,7 @@ trigger: always_on
 
 # Descripción del proyecto
 
-Este proyecto es una aplicación web que permite generar artículos de noticias relacionados con la formación usando IA generativa.
+Este proyecto es una aplicación web que permite crear artículos de noticias en menos de 10 minutos mediante el uso de IA generativa.
 
 
 ## Requisitos
