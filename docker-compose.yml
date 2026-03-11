@@ -19,6 +19,8 @@ services:
         GID: 1000
     working_dir: /var/www/frontend
     command: npm run dev
+    environment:
+      VITE_GEMINI_API_KEY: ${GEMINI_API_KEY}
     volumes:
       - ./frontend:/var/www/frontend
       - /var/www/frontend/node_modules 
