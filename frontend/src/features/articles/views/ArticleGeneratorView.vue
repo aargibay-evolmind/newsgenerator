@@ -1,36 +1,78 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useArticleStore } from '../../articles/store/articleStore'
+import { 
+  useSuggestTopics, 
+  useUrlScraping, 
+  useGenerateOutline, 
+  useGenerateArticle 
+} from '../../articles/composables'
 
+// Store and API hooks
+const store = useArticleStore()
+const {
+  blogTitle,
+  keywords: tags,
+  referenceUrls,
+  scrapedReferences: scrapedUrls,
+  toneValue,
+  articleLength,
+  includeLists,
+  includeTables,
+  outlineList,
+  suggestedLinks
+} = storeToRefs(store)
+
+const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSuggestTopics()
+const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
+const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerateOutline()
+const { mutateAsync: generateArticle, isPending: generateLoading } = useGenerateArticle()
+
+const errorMessage = ref<string | null>(null)
 const currentStep = ref(1)
 
 // Step 1: Definition
-const blogTitle = ref('')
-const suggestTopicsLoading = ref(false)
+// const blogTitle = ref('')
+// const suggestTopicsLoading = ref(false)
 
-function handleSuggestTopics() {
-  if (!blogTitle.value.trim()) return
-  suggestTopicsLoading.value = true
-  setTimeout(() => {
-    suggestTopicsLoading.value = false
-    // Visual mockup, no real data added yet
-  }, 1000)
+async function handleSuggestTopics() {
+  if (!blogTitle.value.trim() || suggestTopicsLoading.value) return
+  try {
+    const data = await suggestTopics({ title: blogTitle.value })
+    if (data.topics && data.topics.length > 0) {
+      blogTitle.value = data.topics[0] || ''
+    }
+  } catch (error: any) {
+    console.error('Failed to suggest topics:', error)
+    if (error?.message?.includes('429')) {
+      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un minuto."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    }
+  }
 }
 
 const referenceUrl = ref('')
-const isScraping = ref(false)
-const scrapedUrls = ref<{url: string, title: string}[]>([])
+// const isScraping = ref(false)
+// const scrapedUrls = ref<{url: string, title: string}[]>([])
 
-function handleScrape() {
-  if (!referenceUrl.value.includes('http')) return;
-  isScraping.value = true
+async function handleScrape() {
+  if (!referenceUrl.value.includes('http') || isScraping.value) return;
   
-  const currentUrl = referenceUrl.value
-  referenceUrl.value = ''
-  
-  setTimeout(() => {
-    isScraping.value = false
-    scrapedUrls.value.push({ url: currentUrl, title: 'Requisitos Oficiales BOE 2024' })
-  }, 1500)
+  try {
+    const data = await scrapeUrl({ url: referenceUrl.value })
+    scrapedUrls.value.push(data)
+    referenceUrl.value = ''
+  } catch (error: any) {
+    console.error('Failed to scrape URL:', error)
+    if (error?.message?.includes('429')) {
+      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un minuto."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    } else {
+      errorMessage.value = "No se pudo leer la URL."
+      setTimeout(() => { errorMessage.value = null }, 3000)
+    }
+  }
 }
 
 function goNext(step: number) {
@@ -38,20 +80,14 @@ function goNext(step: number) {
 }
 
 // Step 2: Architect Outline
-const outlineList = ref([
-  { id: 1, text: 'Introducción al Cuerpo', included: true },
-  { id: 2, text: 'Requisitos Básicos (Edad, Estudios, Nacionalidad)', included: true },
-  { id: 3, text: 'Pruebas Físicas (Carrera, Natación, Flexiones)', included: true },
-  { id: 4, text: 'Exámenes Teóricos y Pruebas Psicotécnicas', included: true },
-  { id: 5, text: 'La vida en la Academia de Baeza', included: false }
-])
+// const outlineList = ref([...])
 
 function addHeading() {
   outlineList.value.push({ id: Date.now(), text: 'Nuevo Encabezado', included: true })
 }
 
 function removeHeading(id: number) {
-  outlineList.value = outlineList.value.filter(h => h.id !== id)
+  outlineList.value = outlineList.value.filter((h: any) => h.id !== id)
 }
 
 const draggedItemIndex = ref<number | null>(null)
@@ -69,14 +105,10 @@ function onDrop(index: number) {
   draggedItemIndex.value = null
 }
 
-const suggestedLinks = ref([
-  { id: 1, title: 'Requisitos de acceso a la Guardia Civil (Ministerio del Interior)', url: 'https://www.interior.gob.es/...', included: true },
-  { id: 2, title: 'Pruebas físicas detalladas (BOE)', url: 'https://boe.es/diario_boe/...', included: true },
-  { id: 3, title: 'Temario Oficial 2024 (Academia Nacional)', url: 'https://academianacional.es/temario...', included: false }
-])
+// const suggestedLinks = ref([...])
 
 function removeLink(id: number) {
-  suggestedLinks.value = suggestedLinks.value.filter(l => l.id !== id)
+  suggestedLinks.value = suggestedLinks.value.filter((l: any) => l.id !== id)
 }
 
 const newLinkUrl = ref('')
@@ -95,8 +127,7 @@ function addLink() {
   }
 }
 
-// Step 2: Architect Settings
-const tags = ref(['Requisitos físicos', 'Fechas de examen', 'Expectativas salariales'])
+// Step 2 Tags functionality
 const newTag = ref('')
 
 function addTag() {
@@ -107,13 +138,8 @@ function addTag() {
 }
 
 function removeTag(tag: string) {
-  tags.value = tags.value.filter(t => t !== tag)
+  tags.value = tags.value.filter((t: any) => t !== tag)
 }
-
-const toneValue = ref(50) 
-const articleLength = ref('medium')
-const includeLists = ref(true)
-const includeTables = ref(false)
 
 // Step 3: View & Editor
 const viewMode = ref<'editor' | 'demo'>('demo')
@@ -151,32 +177,50 @@ Las pruebas incluyen:
 El temario consta de 25 temas que incluyen derecho constitucional, derecho penal y sociología. Te enfrentarás a un examen tipo test, una prueba de ortografía, y una evaluación psicotécnica para medir tu razonamiento lógico.
 `
 
-// Handle proceed to architect
-const architectLoading = ref(false)
+// Transitions
 
-function handleProceedToArchitect() {
+async function handleProceedToArchitect() {
   if (architectLoading.value) return;
-  architectLoading.value = true;
-  
-  // Fake API delay for generating the architecture
-  setTimeout(() => {
-    architectLoading.value = false;
+  try {
+    const response = await generateOutline(store.getGenerateOutlinePayload())
+    outlineList.value = response.outline;
+    suggestedLinks.value = response.suggestedLinks;
     goNext(2);
-  }, 1200);
+  } catch (error: any) {
+    console.error("Failed to generate outline", error)
+    if (error?.message?.includes('429')) {
+      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar el plan conceptual con esta cuenta."
+      setTimeout(() => { errorMessage.value = null }, 8000)
+    } else {
+      errorMessage.value = "❌ Ocurrió un error inesperado al analizar la estructura. Intenta de nuevo."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    }
+  }
 }
 
-const generateLoading = ref(false)
-
-function handleGenerateArticle() {
+async function handleGenerateArticle() {
   if (generateLoading.value) return;
-  generateLoading.value = true;
   
-  // Fake API delay for generating the article
-  setTimeout(() => {
-    generateLoading.value = false;
+  try {
+    const response = await generateArticle(store.getGenerateArticlePayload())
+    // @ts-ignore Since mocked preview uses statically written markdown, replace with real data.
+    // fakeArticle is read-only constant block originally, so we redefine viewing context or simply overwrite string logic via pinia later. Let's do a fast ref.
+    generatedMarkdown.value = response.markdown;
     goNext(3);
-  }, 1500);
+  } catch (error: any) {
+     console.error("Failed to generate final article", error)
+     if (error?.message?.includes('429')) {
+       errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar otro artículo con esta cuenta."
+       setTimeout(() => { errorMessage.value = null }, 8000)
+     } else {
+       errorMessage.value = "❌ Ocurrió un error inesperado al generar el artículo. Intenta de nuevo."
+       setTimeout(() => { errorMessage.value = null }, 5000)
+     }
+  }
 }
+
+const generatedMarkdown = ref(fakeArticle)
+
 
 </script>
 
@@ -212,6 +256,26 @@ function handleGenerateArticle() {
         ></div>
       </div>
     </nav>
+
+    <!-- Global Error Toast -->
+    <transition
+      enter-active-class="transform ease-out duration-300 transition"
+      enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
+      enter-to-class="translate-y-0 opacity-100 sm:translate-x-0"
+      leave-active-class="transition ease-in duration-100"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="errorMessage" class="fixed top-20 right-4 z-50 max-w-sm bg-white border-l-4 border-red-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3">
+        <svg class="h-5 w-5 text-red-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+        <div class="flex-1">
+          <p class="text-sm font-medium text-slate-800">{{ errorMessage }}</p>
+        </div>
+        <button @click="errorMessage = null" class="text-slate-400 hover:text-slate-600">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+        </button>
+      </div>
+    </transition>
 
     <!-- Main Content -->
     <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 sm:mt-12">

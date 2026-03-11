@@ -4,9 +4,9 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      path: '/test',
-      name: 'Test',
-      component: () => import('@/features/test/views/testView.vue'),
+      path: '/',
+      name: 'Generator',
+      component: () => import('@/features/articles/views/ArticleGeneratorView.vue'),
     },
   ],
 })

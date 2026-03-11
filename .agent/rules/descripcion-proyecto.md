@@ -35,12 +35,3 @@ Aquí el usuario podrá conversar con la IA para actualizar este plan, añadiend
 Es el último paso. La IA generará un artículo en formato Markdown. Se podrá cambiar entre la vista "editor" y la vista "demo".
 
 En la vista editor el usuario podrá interactuar con un editor WYSIWIG de Markdown donde podrá modificar el artículo. En la vista "demo" el artículo se verá como si se tratase de un artículo publicado, con sus estilos, párrafos, imágenes, etc.
-
-
-
-
-
-
-
-
-

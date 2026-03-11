@@ -10,6 +10,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   server: {
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://backend.newsgenerator.test',
+        changeOrigin: true,
+      }
+    }
   },
   plugins: [
     vue(),

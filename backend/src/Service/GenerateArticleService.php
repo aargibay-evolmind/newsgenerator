@@ -1,0 +1,74 @@
+<?php
+
+namespace App\Service;
+
+class GenerateArticleService
+{
+    public function __construct(
+        private readonly GeminiService $gemini
+    ) {}
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return string
+     */
+    public function generate(array $payload): string
+    {
+        $title = $payload['title'] ?? 'Sin Título';
+        $keywords = $payload['keywords'] ?? [];
+        $tone = (int) ($payload['tone'] ?? 50);
+        $length = $payload['articleLength'] ?? 'medium';
+        $includeLists = $payload['includeLists'] ?? true;
+        $includeTables = $payload['includeTables'] ?? false;
+        $outline = $payload['outline'] ?? [];
+        $references = $payload['references'] ?? [];
+
+        // Build the Prompt Guidelines
+        $prompt = "Eres un redactor experto y periodista de un blog de alta autoridad. Redactarás un artículo final optimizado para SEO, formateado estrictamente en formato Markdown estándar.\n\n";
+
+        $prompt .= sprintf("**Tema Principal y Título sugerido:** %s\n", $title);
+        
+        if (!empty($keywords)) {
+            $prompt .= sprintf("**Palabras/Conceptos Clave a integrar:** %s\n", implode(', ', $keywords));
+        }
+
+        // Configuration translation
+        $toneStr = "Neutral / Informativo";
+        if ($tone < 30) $toneStr = "Formal, Profesional, y Corporativo.";
+        if ($tone > 70) $toneStr = "Cercano, Amigable, y muy Conversacional.";
+        $prompt .= sprintf("**Tono del artículo:** %s\n", $toneStr);
+
+        $lengthStr = "Aproximadamente 700 palabras.";
+        if ($length === 'short') $lengthStr = "Breve y al grano. Aproximadamente 400 palabras.";
+        if ($length === 'long') $lengthStr = "Extenso y detallado. Más de 1000 palabras.";
+         $prompt .= sprintf("**Longitud objetivo:** %s\n", $lengthStr);
+
+        if ($includeLists) $prompt .= "- Es fundamental incluir listas de viñetas o numeradas para desglose de información.\n";
+        if ($includeTables) $prompt .= "- Es fundamental emplear al menos una tabla Markdown para comparar o presentar datos de forma estructurada.\n";
+
+        // Inject the strictly allowed outline
+        $prompt .= "\n**Estructura del Artículo (Sigue este índice exacto como encabezados principales):**\n";
+        foreach ($outline as $item) {
+            $prompt .= sprintf("- %s\n", $item['text'] ?? 'Sección');
+        }
+
+        // Integrate references into content if chosen
+        if (!empty($references)) {
+             $prompt .= "\n**Fuentes de Autoridad a integrar de forma natural como enlaces (Markdown links):**\n";
+             foreach ($references as $ref) {
+                 $prompt .= sprintf("- [%s](%s)\n", $ref['title'] ?? 'Referencia', $ref['url'] ?? '#');
+             }
+        }
+
+        $prompt .= "\n\nRedacta el contenido en español utilizando saltos de línea y Markdown válido.";
+
+        // Direct call to Gemini WITHOUT schema constraints for free-form markdown response
+        $result = $this->gemini->generateContent($prompt, 'gemini-3-pro-preview');
+
+        if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
+            return $result['candidates'][0]['content']['parts'][0]['text'];
+        }
+
+        throw new \Exception('Failed to generate full markdown article content from AI.');
+    }
+}
