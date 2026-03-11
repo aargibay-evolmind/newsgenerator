@@ -49,3 +49,5 @@ frontend/__screenshots__/
 
 # Vite
 frontend/*.timestamp-*-*.mjs
+
+.env
