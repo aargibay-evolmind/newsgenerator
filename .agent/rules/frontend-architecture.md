@@ -23,10 +23,10 @@ src/
 ├── assets/               # Static assets (images, fonts)
 ├── components/           # Generic, purely presentational UI (Buttons, Cards, Inputs)
 ├── composables/          # Global composables (e.g., useWindowSize)
-├── lib/                  # Third-party library configurations (e.g., Axios instance)
+├── lib/                  # HTTP client setup and third-party library configurations
 ├── features/             # ⭐️ WHERE BUSINESS LOGIC LIVES ⭐️
 │   ├── [feature-name]/   # E.g., `products`, `invoices`
-│   │   ├── api/          # Pure CRUD functions (Axios/Fetch calls)
+│   │   ├── api/          # Pure CRUD functions (fetch calls)
 │   │   ├── components/   # UI components specific to this feature
 │   │   ├── composables/  # TanStack Query wrappers (useProducts.ts)
 │   │   ├── store/        # Pinia stores (ONLY for client state related to feature)
@@ -83,8 +83,8 @@ import { apiClient } from '@/lib/apiClient';
 import type { Todo } from '../types';
 
 export const TodoAPI = {
-  getAll: () => apiClient.get<Todo[]>('/todos').then(res => res.data),
-  create: (data: Omit<Todo, 'id'>) => apiClient.post<Todo>('/todos', data).then(res => res.data),
+  getAll: () => apiClient<Todo[]>('/todos'),
+  create: (data: Omit<Todo, 'id'>) => apiClient<Todo>('/todos', { method: 'POST', body: JSON.stringify(data) }),
 };
 ```
 
