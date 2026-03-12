@@ -16,7 +16,7 @@ class GenerateOutlineService
      * @param string $searchIntent
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo'): array
+    public function generate(string $title, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = ''): array
     {
         $prompt = sprintf(
             "Actúa como el Arquitecto Jefe de contenido para un blog de noticias de alta retención. Vas a diseñar el esquema para un artículo titulado: '%s'.\n",
@@ -25,6 +25,10 @@ class GenerateOutlineService
 
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
+
+        if (!empty(trim($additionalContext))) {
+            $prompt .= sprintf("**Contexto y directrices adicionales del redactor:** %s\n", $additionalContext);
+        }
 
         if (!empty($keywords)) {
             $prompt .= sprintf("Debes asegurarte de cubrir obligatoriamente los siguientes Puntos Clave: %s.\n", implode(', ', $keywords));

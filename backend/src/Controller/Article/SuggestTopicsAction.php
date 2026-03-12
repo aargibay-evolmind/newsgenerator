@@ -25,10 +25,6 @@ class SuggestTopicsAction
         $payload = json_decode($request->getContent(), true);
         $title = $payload['title'] ?? '';
 
-        if (empty(trim($title))) {
-            return $this->responder->respondError('Title parameter is required.', 400);
-        }
-
         try {
             $topics = $this->domainService->suggest($title);
             return $this->responder->respond(['topics' => $topics]);

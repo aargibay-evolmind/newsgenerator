@@ -14,10 +14,12 @@ class SuggestTopicsService
      */
     public function suggest(string $topic): array
     {
-        $prompt = sprintf(
-            "Eres un periodista experto en SEO. Necesito que sugieras 5 titulares o enfoques alternativos atractivos para un artículo de blog sobre el siguiente tema: '%s'. Deben ser descriptivos y diseñados para captar clics. Solo devuelve los conceptos/títulos.",
-            $topic
-        );
+        $prompt = empty(trim($topic))
+            ? "Eres un periodista experto en tendencias de noticias internacionales y de España. Sugiere exactamente 3 titulares de noticias actuales, variados y muy atractivos (trending topics o noticias de interés general) para un blog profesional. Deben ser temas que inviten a hacer clic. Solo devuelve los conceptos/títulos."
+            : sprintf(
+                "Eres un periodista experto en SEO y marketing de contenidos. Sugiere exactamente 3 titulares o enfoques alternativos atractivos para un artículo sobre: '%s'. Deben ser descriptivos y diseñados para captar clics. Solo devuelve los conceptos/títulos.",
+                $topic
+            );
 
         $schema = [
             'type' => 'OBJECT', // TYPE_OBJECT from the specification

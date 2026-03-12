@@ -21,6 +21,7 @@ export interface GenerateOutlineRequest {
   referenceUrls: string[];
   audience?: string;
   searchIntent?: string;
+  additionalContext?: string;
 }
 
 export interface OutlineItem {
@@ -49,6 +50,7 @@ export interface GenerateArticleRequest {
   articleLength: string;
   audience?: string;
   searchIntent?: string;
+  additionalContext?: string;
   includeLists: boolean;
   includeTables: boolean;
   outline: OutlineItem[];

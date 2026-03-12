@@ -8,6 +8,7 @@ export const useArticleStore = defineStore('article', () => {
   const keywords = ref<string[]>([]);
   const referenceUrls = ref<string[]>([]);
   const scrapedReferences = ref<{url: string, title: string}[]>([]);
+  const additionalContext = ref('');
 
   // Advanced Context
   const audience = ref('General');
@@ -30,6 +31,7 @@ export const useArticleStore = defineStore('article', () => {
       keywords: keywords.value,
       audience: audience.value,
       searchIntent: searchIntent.value,
+      additionalContext: additionalContext.value,
       referenceUrls: scrapedReferences.value.map(r => r.url).concat(referenceUrls.value)
     };
   }
@@ -40,6 +42,7 @@ export const useArticleStore = defineStore('article', () => {
       keywords: keywords.value,
       audience: audience.value,
       searchIntent: searchIntent.value,
+      additionalContext: additionalContext.value,
       tone: toneValue.value,
       articleLength: articleLength.value,
       includeLists: includeLists.value,
@@ -56,6 +59,7 @@ export const useArticleStore = defineStore('article', () => {
     keywords,
     referenceUrls,
     scrapedReferences,
+    additionalContext,
     audience,
     searchIntent,
     toneValue,

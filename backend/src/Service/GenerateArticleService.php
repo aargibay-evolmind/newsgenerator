@@ -24,6 +24,7 @@ class GenerateArticleService
         $references = $payload['references'] ?? [];
         $audience = $payload['audience'] ?? 'General';
         $searchIntent = $payload['searchIntent'] ?? 'Informativo';
+        $additionalContext = $payload['additionalContext'] ?? '';
 
         // Build the Prompt Guidelines
         $prompt = "Eres un redactor experto y periodista de un blog de alta autoridad. Redactarás un artículo final optimizado para SEO, formateado estrictamente en formato Markdown estándar.\n\n";
@@ -31,6 +32,10 @@ class GenerateArticleService
         $prompt .= sprintf("**Tema Principal y Título sugerido:** %s\n", $title);
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
+
+        if (!empty(trim($additionalContext))) {
+            $prompt .= sprintf("**Contexto y directrices adicionales del redactor (sigue estas instrucciones con prioridad):** %s\n", $additionalContext);
+        }
         
         if (!empty($keywords)) {
             $prompt .= sprintf("**Palabras/Conceptos Clave a integrar:** %s\n", implode(', ', $keywords));

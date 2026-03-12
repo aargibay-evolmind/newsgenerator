@@ -18,6 +18,7 @@ const {
   keywords: tags,
   referenceUrls,
   scrapedReferences,
+  additionalContext,
   audience,
   searchIntent,
   toneValue,
@@ -27,7 +28,6 @@ const {
   outlineList,
   suggestedLinks
 } = storeToRefs(store)
-
 const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSuggestTopics()
 const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
 const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerateOutline()
@@ -35,14 +35,13 @@ const { mutateAsync: generateArticle, isPending: generateLoading } = useGenerate
 
 const errorMessage = ref<string | null>(null)
 const currentStep = ref(1)
-
-// Step 1: Definition
+const suggestedTopics = ref<string[]>([])
 
 async function handleSuggestTopics() {
   try {
     const data = await suggestTopics({ title: blogTitle.value })
     if (data.topics && data.topics.length > 0) {
-      blogTitle.value = data.topics[0] || ''
+      suggestedTopics.value = data.topics.slice(0, 3)
     }
   } catch (error: any) {
     if (error?.message?.includes('429')) {
@@ -278,8 +277,16 @@ El temario consta de 25 temas que incluyen derecho constitucional, derecho penal
 
 // Transitions
 
+const titleError = ref(false)
+
 async function handleProceedToArchitect() {
   if (architectLoading.value) return;
+
+  if (!blogTitle.value.trim()) {
+    titleError.value = true
+    return
+  }
+
   try {
     const response = await generateOutline(store.getGenerateOutlinePayload())
     outlineList.value = response.outline;
@@ -408,35 +415,66 @@ const renderedMarkdown = computed(() => {
 
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <!-- MAIN CONTENT -->
-            <div class="lg:col-span-3 bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden ring-1 ring-slate-900/5">
+            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-1 ring-slate-900/5">
               <div class="p-8 space-y-8">
                 
                 <!-- Quick Start Title -->
                 <div>
-                  <label for="blog-title" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">Título del Blog</label>
+                  <label for="blog-title" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Título de la Noticia</label>
                   <input
                     id="blog-title"
                     v-model="blogTitle"
+                    @input="titleError = false"
                     type="text"
-                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-lg sm:leading-relaxed transition-shadow"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset sm:text-lg sm:leading-relaxed transition-all"
+                    :class="titleError 
+                      ? 'ring-red-400 focus:ring-red-400 bg-red-50/30' 
+                      : 'ring-slate-200 focus:ring-slate-400'"
                     placeholder="Ej. Cómo ser Guardia Civil, pasos para ingresar..."
                   />
-                  <button 
-                    @click="handleSuggestTopics" 
-                    :disabled="suggestTopicsLoading"
-                    class="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100 disabled:opacity-75 disabled:cursor-not-allowed"
-                  >
-                    <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.06l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.06 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 10-1.061 1.06l1.06 1.061z" /></svg>
-                    <span v-if="suggestTopicsLoading">Generando sugerencias...</span>
-                    <span v-else>Sugerir temas con IA</span>
-                  </button>
+                  <div v-if="titleError" class="mt-2 flex items-center gap-1.5 text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+                    <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+                    El título de la noticia es obligatorio.
+                  </div>
+                  <div class="mt-4">
+                    <button 
+                      @click="handleSuggestTopics" 
+                      :disabled="suggestTopicsLoading"
+                      class="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100 disabled:opacity-75 disabled:cursor-not-allowed"
+                    >
+                      <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.06l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.06 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 10-1.061 1.06l1.06 1.061z" /></svg>
+                      <span v-if="suggestTopicsLoading">Generando...</span>
+                      <span v-else>Sugerir temas con IA</span>
+                    </button>
+
+                    <!-- Stacked selectable topics -->
+                    <div v-if="suggestedTopics.length > 0" class="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div class="flex items-center justify-between px-4 py-2 border-b border-indigo-100">
+                        <span class="text-xs font-bold text-indigo-600 uppercase tracking-widest">Sugerencias</span>
+                        <button @click="suggestedTopics = []" class="flex items-center justify-center h-6 w-6 rounded-full text-slate-400 hover:bg-indigo-100 hover:text-indigo-700 transition-colors" title="Limpiar sugerencias">
+                          <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                      <div class="divide-y divide-indigo-100/70">
+                        <button 
+                          v-for="(topic, idx) in suggestedTopics" 
+                          :key="idx"
+                          @click="blogTitle = topic; suggestedTopics = []"
+                          class="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 hover:bg-indigo-600 hover:text-white transition-colors duration-150 flex items-center gap-3 group"
+                        >
+                          <span class="shrink-0 h-5 w-5 rounded-full bg-indigo-100 group-hover:bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-indigo-600 group-hover:text-white transition-colors">{{ idx + 1 }}</span>
+                          {{ topic }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Puntos Clave Input -->
                 <div class="pt-6 border-t border-slate-100">
                   <div class="mb-4">
-                    <label for="puntos-clave" class="block text-sm font-semibold leading-6 text-slate-900 mb-1">Puntos clave (Opcional)</label>
+                    <label for="puntos-clave" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Puntos clave <span class="normal-case font-medium text-slate-400">(Opcional)</span></label>
                     <p class="text-xs text-slate-500">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
@@ -445,7 +483,7 @@ const renderedMarkdown = computed(() => {
                       v-model="newTag" 
                       @keydown.enter.prevent="addTag"
                       type="text" 
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm"
                       placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
                     />
                     <button @click="addTag" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors border border-slate-200 shadow-sm shrink-0">
@@ -457,7 +495,7 @@ const renderedMarkdown = computed(() => {
                   <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
                     <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
                       {{ tag }}
-                      <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 rounded-full p-0.5" title="Eliminar punto clave">
+                      <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 rounded-full p-0.5" title="Eliminar punto clave">
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     </span>
@@ -466,13 +504,13 @@ const renderedMarkdown = computed(() => {
 
                 <!-- URL Scraper -->
                 <div class="pt-6 border-t border-slate-100">
-                  <label for="reference-url" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">URLs de Referencia</label>
+                  <label for="reference-url" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">URLs de Referencia</label>
                   <input
                     id="reference-url"
                     v-model="referenceUrl"
                     @keydown.enter.prevent="handleScrape"
                     type="text"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm sm:leading-relaxed transition-shadow"
                     placeholder="Pega un enlace y pulsa Enter..."
                   />
                   
@@ -493,7 +531,7 @@ const renderedMarkdown = computed(() => {
                 </div>
               </div>
               
-              <div class="p-8 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <div class="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
                 <button 
                   @click="handleProceedToArchitect" 
                   :disabled="architectLoading"
@@ -512,48 +550,65 @@ const renderedMarkdown = computed(() => {
             </div>
 
             <!-- SIDEBAR: TARGETING -->
-            <aside class="lg:col-span-1 space-y-6">
-              <div class="bg-white rounded-3xl shadow-lg border border-slate-100 p-6 space-y-6 lg:sticky lg:top-24">
-                <div class="flex items-center gap-2 pb-4 border-b border-slate-50">
+            <aside class="lg:col-span-1">
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 lg:sticky lg:top-24 h-full flex flex-col">
+                <div class="flex items-center gap-2 pb-4 border-b border-slate-50 shrink-0">
                   <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                   </svg>
                   <h3 class="font-bold text-slate-800">Preferencias</h3>
                 </div>
 
-                <div>
-                  <label for="audience" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Público Objetivo</label>
-                  <select
-                    id="audience"
-                    v-model="audience"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-indigo-600 sm:text-sm bg-slate-50/50"
-                  >
-                    <option value="General">General (Todos los públicos)</option>
-                    <option value="Principiantes">Principiantes / Novatos</option>
-                    <option value="Expertos">Expertos / Profesionales</option>
-                    <option value="Estudiantes">Estudiantes / Académico</option>
-                    <option value="Técnico">Perfil Técnico / Desarrolladores</option>
-                  </select>
+                <div class="space-y-6 pt-6">
+                  <div>
+                    <label for="audience" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Público Objetivo</label>
+                    <select
+                      id="audience"
+                      v-model="audience"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm bg-slate-50/50"
+                    >
+                      <option value="General">General (Todos los públicos)</option>
+                      <option value="Principiantes">Principiantes / Novatos</option>
+                      <option value="Expertos">Expertos / Profesionales</option>
+                      <option value="Estudiantes">Estudiantes / Académico</option>
+                      <option value="Técnico">Perfil Técnico / Desarrolladores</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="intent" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Intención de Búsqueda</label>
+                    <select
+                      id="intent"
+                      v-model="searchIntent"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm bg-slate-50/50"
+                    >
+                      <option value="Informativo">Informativo (Noticia / Saber qué)</option>
+                      <option value="Tutorial">Tutorial / Guía Paso a Paso</option>
+                      <option value="Transaccional">Transaccional (Venta / Trámite)</option>
+                      <option value="Comparativo">Comparativo (Cual es mejor)</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label for="intent" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Intención de Búsqueda</label>
-                  <select
-                    id="intent"
-                    v-model="searchIntent"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-indigo-600 sm:text-sm bg-slate-50/50"
-                  >
-                    <option value="Informativo">Informativo (Noticia / Saber qué)</option>
-                    <option value="Tutorial">Tutorial / Guía Paso a Paso</option>
-                    <option value="Transaccional">Transaccional (Venta / Trámite)</option>
-                    <option value="Comparativo">Comparativo (Cual es mejor)</option>
-                  </select>
+                <div class="mt-6 pt-6 border-t border-slate-100">
+                  <label for="additional-context" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-slate-400">(Opcional)</span></label>
+                  <p class="text-xs text-slate-500 mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
+                  <textarea
+                    id="additional-context"
+                    v-model="additionalContext"
+                    rows="4"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 text-xs resize-none transition-shadow"
+                    placeholder="Ej: Tono cercano y optimista. No mencionar requisitos de edad..."
+                  ></textarea>
                 </div>
 
-                <div class="pt-4 border-t border-slate-50">
-                   <p class="text-[10px] text-slate-400 leading-relaxed font-medium">
-                     <span class="text-indigo-500">Pro Tip:</span> Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
-                   </p>
+                <div class="mt-auto pt-6">
+                  <div class="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100/50">
+                    <p class="text-[10px] text-slate-500 leading-relaxed font-medium">
+                      <span class="text-indigo-600 font-bold uppercase tracking-tighter mr-1">Pro Tip:</span> 
+                      Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
+                    </p>
+                  </div>
                 </div>
               </div>
             </aside>
@@ -561,9 +616,9 @@ const renderedMarkdown = computed(() => {
         </div>
         <!-- STEP 2: THE ARCHITECT -->
         <div v-else-if="currentStep === 2" class="space-y-8" key="step2">
-          <div class="mb-8">
-            <h1 class="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl mb-2">Revisar Plan del Artículo</h1>
-            <p class="text-slate-500">Ajusta la estructura principal y la configuración antes de generar el borrador.</p>
+          <div class="text-center max-w-2xl mx-auto mb-10">
+            <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl mb-4">Diseño del Artículo</h1>
+            <p class="text-lg text-slate-500">Ajusta la estructura y configuración antes de generar el borrador.</p>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -572,8 +627,8 @@ const renderedMarkdown = computed(() => {
             <div class="lg:col-span-3 flex flex-col gap-6">
               
               <!-- Outline Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0">
-              <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-slate-900/5">
+              <h2 class="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
                 <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
                 Esquema Interactivo
               </h2>
@@ -586,8 +641,8 @@ const renderedMarkdown = computed(() => {
                     @dragover.prevent
                     @dragenter.prevent
                     @drop="onDrop(index)"
-                    class="group flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-move" 
-                    :class="{'opacity-60 bg-slate-50': !item.included, 'ring-2 ring-indigo-500 ring-dashed opacity-50': draggedItemIndex === index}">
+                    class="group flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 hover:border-slate-300 hover:bg-slate-50/50 transition-all cursor-move" 
+                    :class="{'opacity-50 bg-slate-50': !item.included, 'border-dashed border-slate-300 bg-slate-50 opacity-40': draggedItemIndex === index}">
                   
                   <!-- Drag Handle -->
                   <span class="cursor-grab text-slate-300 hover:text-slate-500 shrink-0">
@@ -596,7 +651,7 @@ const renderedMarkdown = computed(() => {
                   
                   <!-- Checkbox -->
                   <div class="flex items-center shrink-0">
-                    <input type="checkbox" v-model="item.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 transition duration-150 cursor-pointer" />
+                    <input type="checkbox" v-model="item.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 cursor-pointer" />
                   </div>
 
                   <!-- Editable Input Text -->
@@ -609,17 +664,15 @@ const renderedMarkdown = computed(() => {
                     />
                     
                     <!-- Budget Selector -->
-                    <div class="flex items-center gap-1 shrink-0 bg-slate-50 p-1 rounded-lg border border-slate-100" v-if="item.included">
-                      <button 
-                        v-for="b in ['short', 'medium', 'long']" 
-                        :key="b"
-                        @click="item.budget = (b as any)"
-                        class="px-2 py-0.5 text-[10px] font-bold uppercase rounded transition-all"
-                        :class="item.budget === b ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'"
-                      >
-                        {{ b === 'short' ? 'S' : b === 'medium' ? 'M' : 'L' }}
-                      </button>
-                    </div>
+                    <select
+                      v-if="item.included"
+                      v-model="item.budget"
+                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold text-slate-600 bg-slate-50 ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                    >
+                      <option value="short">Breve (~100 palabras)</option>
+                      <option value="medium">Normal (~250 palabras)</option>
+                      <option value="long">Extenso (~500 palabras)</option>
+                    </select>
                   </div>
                   
                   <!-- Delete Action -->
@@ -630,15 +683,15 @@ const renderedMarkdown = computed(() => {
               </ul>
               
               <div class="mt-4 flex flex-wrap justify-between pt-4 border-t border-slate-100 gap-3">
-                <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg">
+                <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
                   <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                   Encabezado
                 </button>
                 <div class="flex gap-2">
-                  <button @click="addFAQTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg">
+                  <button @click="addFAQTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
                     <span>+ FAQ</span>
                   </button>
-                  <button @click="addProsConsTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg">
+                  <button @click="addProsConsTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
                     <span>+ Pros/Contras</span>
                   </button>
                 </div>
@@ -646,19 +699,19 @@ const renderedMarkdown = computed(() => {
               </div>
 
               <!-- Suggested Links Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0">
-                <h2 class="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-slate-900/5">
+                <h2 class="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
                   <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                  Enlaces de Referencia Sugeridos
+                  Enlaces Sugeridos
                 </h2>
                 <p class="text-sm text-slate-500 mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
                 
                 <ul class="space-y-3 pr-2">
-                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all" :class="{'opacity-60 bg-slate-50': !link.included}">
+                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3 hover:border-slate-300 hover:bg-slate-50/50 transition-all" :class="{'opacity-60 bg-slate-50': !link.included}">
                     
                     <!-- Checkbox -->
                     <div class="flex items-center shrink-0 mt-0.5">
-                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 transition duration-150 cursor-pointer" />
+                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 cursor-pointer" />
                     </div>
 
                     <!-- Link Info -->
@@ -688,8 +741,8 @@ const renderedMarkdown = computed(() => {
 
                 <div class="mt-4 flex justify-start pt-4 border-t border-slate-100 gap-2 items-center">
                    <div class="flex-1 grid grid-cols-2 gap-2">
-                      <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-xs">
-                      <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-xs">
+                      <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-xs">
+                      <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-xs">
                    </div>
                    <button @click="addLink" class="inline-flex items-center justify-center shrink-0 w-8 h-8 font-semibold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 hover:bg-indigo-100 rounded-lg" title="Añadir enlace">
                       <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
@@ -722,7 +775,7 @@ const renderedMarkdown = computed(() => {
                     v-model="newTag"
                     @keydown.enter.prevent="addTag"
                     type="text"
-                    class="block w-full rounded-xl border-0 py-2.5 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
+                    class="block w-full rounded-xl border-0 py-2.5 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm"
                     placeholder="Añadir nueva y pulsar Enter..."
                   />
                 </div>
@@ -735,7 +788,7 @@ const renderedMarkdown = computed(() => {
                       {{ toneValue < 33 ? 'Profesional' : toneValue < 66 ? 'Cercano' : 'Viral/Audaz' }}
                     </span>
                   </label>
-                  <input type="range" v-model="toneValue" min="0" max="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:ring-2 focus:ring-indigo-600 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600" />
+                  <input type="range" v-model="toneValue" min="0" max="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:outline-none focus:ring-2 focus:ring-slate-400 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600" />
                   <div class="flex justify-between text-[10px] uppercase font-bold text-slate-400">
                     <span>Prof.</span>
                     <span>Cercano</span>
@@ -746,7 +799,7 @@ const renderedMarkdown = computed(() => {
                 <!-- Length -->
                 <div>
                   <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitud</label>
-                  <select v-model="articleLength" class="block w-full rounded-xl border-0 py-2.5 pl-3 pr-10 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 cursor-pointer bg-white">
+                  <select v-model="articleLength" class="block w-full rounded-xl border-0 py-2.5 pl-3 pr-10 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm sm:leading-6 cursor-pointer bg-white">
                     <option value="short">Corto (~500 palabras)</option>
                     <option value="medium">Mediano (~1000 palabras)</option>
                     <option value="long">Largo (~2000 palabras)</option>
@@ -758,11 +811,11 @@ const renderedMarkdown = computed(() => {
                   <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Elementos Adicionales</label>
                   <label class="flex items-center justify-between cursor-pointer group">
                     <span class="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">Incluir listas (viñetas)</span>
-                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 transition duration-150 ease-in-out cursor-pointer" />
+                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 ease-in-out cursor-pointer" />
                   </label>
                   <label class="flex items-center justify-between cursor-pointer group">
                     <span class="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">Incluir tablas de datos</span>
-                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 transition duration-150 ease-in-out cursor-pointer" />
+                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 ease-in-out cursor-pointer" />
                   </label>
                 </div>
 
@@ -788,15 +841,15 @@ const renderedMarkdown = computed(() => {
 
               </div>
               
-              <div class="p-4 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-between gap-3">
-                <button @click="goNext(1)" class="w-1/3 inline-flex items-center justify-center rounded-xl bg-white border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600">
+              <div class="p-6 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-between gap-3">
+                <button @click="goNext(1)" class="inline-flex items-center justify-center rounded-xl bg-white border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
                   <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                   Volver
                 </button>
                 <button 
                   @click="handleGenerateArticle" 
                   :disabled="generateLoading"
-                  class="w-2/3 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 disabled:opacity-75 disabled:cursor-not-allowed"
+                  class="group flex-1 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:opacity-75 disabled:cursor-not-allowed"
                 >
                   <div v-if="generateLoading" class="flex items-center gap-2">
                     <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -819,7 +872,7 @@ const renderedMarkdown = computed(() => {
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
             
             <div class="flex items-center gap-3">
-              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-indigo-600">
+              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 Volver
               </button>
@@ -846,11 +899,11 @@ const renderedMarkdown = computed(() => {
 
             <!-- Actions (Version / Export) -->
             <div class="flex items-center gap-2">
-              <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-indigo-600">
+              <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Historial
               </button>
-              <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 border border-transparent rounded-xl shadow-sm hover:bg-indigo-500 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600">
+              <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 border border-transparent rounded-xl shadow-sm hover:bg-indigo-500 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
                 Publicar Vía API
                 <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" /><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" /></svg>
               </button>
