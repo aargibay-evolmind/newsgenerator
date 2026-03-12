@@ -7,7 +7,9 @@ import type {
   GenerateOutlineRequest,
   GenerateOutlineResponse,
   GenerateArticleRequest,
-  GenerateArticleResponse
+  GenerateArticleResponse,
+  RegenerateSectionRequest,
+  RegenerateSectionResponse
 } from '../types';
 
 export const ArticleAPI = {
@@ -33,5 +35,11 @@ export const ArticleAPI = {
     apiClient<GenerateArticleResponse>('/generate-article', { 
       method: 'POST', 
       body: JSON.stringify(data) 
+    }),
+
+  regenerateSection: (data: RegenerateSectionRequest) =>
+    apiClient<RegenerateSectionResponse>('/regenerate-section', {
+      method: 'POST',
+      body: JSON.stringify(data)
     }),
 };

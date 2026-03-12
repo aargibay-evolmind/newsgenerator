@@ -6,7 +6,8 @@ import {
   useSuggestTopics, 
   useUrlScraping, 
   useGenerateOutline, 
-  useGenerateArticle 
+  useGenerateArticle,
+  useRegenerateSection
 } from '../../articles/composables'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -32,6 +33,7 @@ const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSugge
 const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
 const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerateOutline()
 const { mutateAsync: generateArticle, isPending: generateLoading } = useGenerateArticle()
+const { mutateAsync: regenerateSection } = useRegenerateSection()
 
 const errorMessage = ref<string | null>(null)
 const currentStep = ref(1)
@@ -332,6 +334,75 @@ async function handleGenerateArticle() {
 }
 
 const generatedMarkdown = ref(fakeArticle)
+
+// Parse markdown into sections split by ## headings
+interface ParsedSection {
+  heading: string      // e.g. "## 1. Requisitos Básicos"
+  headingText: string  // e.g. "1. Requisitos Básicos"
+  content: string      // body text after the heading
+  html: string         // rendered body HTML
+  isRegenerating: boolean
+}
+
+const _sectionRegen = ref<Record<number, boolean>>({})
+
+const parsedSections = computed<ParsedSection[]>(() => {
+  const md = generatedMarkdown.value
+  // Split by any ## heading (H2)
+  const parts = md.split(/(?=^## )/m)
+  return parts
+    .filter(p => p.trim())
+    .map((part, idx) => {
+      const lines = part.split('\n')
+      const firstLine = lines[0] ?? ''
+      const isHeading = firstLine.startsWith('## ')
+      const heading = isHeading ? firstLine : ''
+      const headingText = isHeading ? heading.replace(/^##\s+/, '') : (idx === 0 ? 'Introducción' : '')
+      const content = isHeading ? lines.slice(1).join('\n').trim() : part.trim()
+      const rawHtml = marked.parse(content) as string
+      return {
+        heading,
+        headingText,
+        content,
+        html: DOMPurify.sanitize(rawHtml),
+        isRegenerating: _sectionRegen.value[idx] ?? false,
+      }
+    })
+})
+
+function replaceSectionContent(sectionIdx: number, newContent: string) {
+  const sections = parsedSections.value
+  const updated = sections.map((s, i) => {
+    if (i !== sectionIdx) return s.heading ? `${s.heading}\n${s.content}` : s.content
+    return s.heading ? `${s.heading}\n${newContent}` : newContent
+  })
+  generatedMarkdown.value = updated.join('\n\n')
+}
+
+async function handleRegenerateSection(sectionIdx: number) {
+  const section = parsedSections.value[sectionIdx]
+  if (!section || _sectionRegen.value[sectionIdx]) return
+  _sectionRegen.value = { ..._sectionRegen.value, [sectionIdx]: true }
+  try {
+    const result = await regenerateSection({
+      articleTitle: blogTitle.value,
+      sectionHeading: section.headingText,
+      currentContent: section.content,
+      context: additionalContext.value,
+    })
+    replaceSectionContent(sectionIdx, result.content)
+  } catch (e: any) {
+    if (e?.message?.includes('429')) {
+      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un momento e inténtalo de nuevo."
+      setTimeout(() => { errorMessage.value = null }, 6000)
+    } else {
+      errorMessage.value = "❌ Error al regenerar la sección. Intenta de nuevo."
+      setTimeout(() => { errorMessage.value = null }, 4000)
+    }
+  } finally {
+    _sectionRegen.value = { ..._sectionRegen.value, [sectionIdx]: false }
+  }
+}
 
 const renderedMarkdown = computed(() => {
   const rawHtml = marked.parse(generatedMarkdown.value) as string
@@ -876,18 +947,6 @@ const renderedMarkdown = computed(() => {
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 Volver
               </button>
-
-              <!-- SEO Scorecard -->
-              <div class="flex items-center gap-3 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
-                 <div class="relative flex h-3 w-3">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </div>
-                <div class="flex flex-col">
-                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Puntuación SEO</span>
-                  <span class="text-sm font-extrabold text-slate-700 leading-none">{{ seoScore }}/100</span>
-                </div>
-              </div>
             </div>
 
             <!-- Toggle Switch -->
@@ -940,12 +999,57 @@ const renderedMarkdown = computed(() => {
               </div>
 
               <!-- DEMO VIEW -->
-              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-y-auto animate-fade-in relative group p-8 sm:p-12 h-full">
-                <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-semibold whitespace-nowrap shadow-sm border border-indigo-200">✨ Vista Previa Lectura</span>
+              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-y-auto animate-fade-in h-full">
+                <div class="p-8 sm:p-12 space-y-2">
+                  <div
+                    v-for="(section, idx) in parsedSections"
+                    :key="idx"
+                    class="relative group/section pb-8 last:pb-0"
+                  >
+                    <!-- Floating Re-generate button (on the right edge) -->
+                    <div
+                      class="absolute -right-4 top-0 opacity-0 group-hover/section:opacity-100 transition-opacity duration-200 z-20"
+                    >
+                      <button
+                        @click="handleRegenerateSection(idx)"
+                        :disabled="section.isRegenerating"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-white border border-indigo-100 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed translate-x-full"
+                        title="Re-generar esta sección"
+                      >
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
+                        Re-generar
+                      </button>
+                    </div>
+
+                    <!-- Section Heading -->
+                    <h2 v-if="section.heading" class="text-2xl font-extrabold text-slate-900 mb-3 tracking-tight">
+                      {{ section.headingText }}
+                    </h2>
+                    <div v-else-if="idx === 0" class="text-xs font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <span class="h-px bg-slate-100 flex-grow"></span>
+                       Introducción
+                       <span class="h-px bg-slate-100 flex-grow"></span>
+                    </div>
+
+                    <!-- Section Body -->
+                    <div class="relative">
+                      <!-- Loading overlay -->
+                      <div v-if="section.isRegenerating" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl z-10">
+                        <div class="flex items-center gap-3 text-indigo-600">
+                          <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          <span class="text-sm font-semibold">Regenerando sección...</span>
+                        </div>
+                      </div>
+
+                      <!-- Body content -->
+                      <div
+                        v-html="section.html"
+                        class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl"
+                        :class="{ 'opacity-30 pointer-events-none': section.isRegenerating }"
+                      ></div>
+                    </div>
+                  </div>
                 </div>
-                
-                <article v-html="renderedMarkdown" class="prose prose-slate prose-indigo max-w-none prose-headings:font-extrabold prose-h1:text-4xl sm:prose-h1:text-5xl prose-p:text-lg prose-p:leading-relaxed prose-li:text-lg prose-img:rounded-2xl"></article>
               </div>
             </div>
 

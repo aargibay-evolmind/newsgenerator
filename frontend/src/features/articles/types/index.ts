@@ -60,3 +60,14 @@ export interface GenerateArticleRequest {
 export interface GenerateArticleResponse {
   markdown: string;
 }
+
+export interface RegenerateSectionRequest {
+  articleTitle: string;
+  sectionHeading: string;
+  currentContent: string;
+  context?: string;
+}
+
+export interface RegenerateSectionResponse {
+  content: string;
+}
