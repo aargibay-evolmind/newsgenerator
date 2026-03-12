@@ -19,12 +19,15 @@ export interface GenerateOutlineRequest {
   title: string;
   keywords: string[];
   referenceUrls: string[];
+  audience?: string;
+  searchIntent?: string;
 }
 
 export interface OutlineItem {
   id: number;
   text: string;
   included: boolean;
+  budget?: 'short' | 'medium' | 'long';
 }
 
 export interface ReferenceLink {
@@ -44,6 +47,8 @@ export interface GenerateArticleRequest {
   keywords: string[];
   tone: number;
   articleLength: string;
+  audience?: string;
+  searchIntent?: string;
   includeLists: boolean;
   includeTables: boolean;
   outline: OutlineItem[];

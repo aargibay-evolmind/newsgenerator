@@ -27,13 +27,15 @@ class GenerateOutlineAction
         $title = $payload['title'] ?? '';
         $keywords = $payload['keywords'] ?? [];
         $urls = $payload['referenceUrls'] ?? [];
+        $audience = $payload['audience'] ?? 'General';
+        $searchIntent = $payload['searchIntent'] ?? 'Informativo';
 
         if (empty(trim($title))) {
             return $this->responder->respondError('Title parameter is required.', 400);
         }
 
         try {
-            $data = $this->domainService->generate($title, $keywords, $urls);
+            $data = $this->domainService->generate($title, $keywords, $urls, $audience, $searchIntent);
             return $this->responder->respond($data);
         } catch (\Exception $e) {
             return $this->responder->respondError($e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), 500);

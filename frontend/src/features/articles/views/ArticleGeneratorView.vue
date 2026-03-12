@@ -8,6 +8,8 @@ import {
   useGenerateOutline, 
   useGenerateArticle 
 } from '../../articles/composables'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 // Store and API hooks
 const store = useArticleStore()
@@ -15,7 +17,9 @@ const {
   blogTitle,
   keywords: tags,
   referenceUrls,
-  scrapedReferences: scrapedUrls,
+  scrapedReferences,
+  audience,
+  searchIntent,
   toneValue,
   articleLength,
   includeLists,
@@ -33,40 +37,40 @@ const errorMessage = ref<string | null>(null)
 const currentStep = ref(1)
 
 // Step 1: Definition
-// const blogTitle = ref('')
-// const suggestTopicsLoading = ref(false)
 
 async function handleSuggestTopics() {
-  if (!blogTitle.value.trim() || suggestTopicsLoading.value) return
   try {
     const data = await suggestTopics({ title: blogTitle.value })
     if (data.topics && data.topics.length > 0) {
       blogTitle.value = data.topics[0] || ''
     }
   } catch (error: any) {
-    console.error('Failed to suggest topics:', error)
     if (error?.message?.includes('429')) {
       errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un minuto."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    } else if (error?.message?.includes('503')) {
+      errorMessage.value = "⚠️ Los servidores de IA de Google están saturados en este momento. Intenta de nuevo en unos segundos."
       setTimeout(() => { errorMessage.value = null }, 5000)
     }
   }
 }
 
 const referenceUrl = ref('')
-// const isScraping = ref(false)
-// const scrapedUrls = ref<{url: string, title: string}[]>([])
 
 async function handleScrape() {
   if (!referenceUrl.value.includes('http') || isScraping.value) return;
   
   try {
     const data = await scrapeUrl({ url: referenceUrl.value })
-    scrapedUrls.value.push(data)
+    scrapedReferences.value.push(data)
     referenceUrl.value = ''
   } catch (error: any) {
     console.error('Failed to scrape URL:', error)
     if (error?.message?.includes('429')) {
       errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un minuto."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    } else if (error?.message?.includes('503')) {
+      errorMessage.value = "⚠️ Los servidores de IA de Google están saturados en este momento. Intenta de nuevo en unos segundos."
       setTimeout(() => { errorMessage.value = null }, 5000)
     } else {
       errorMessage.value = "No se pudo leer la URL."
@@ -80,7 +84,6 @@ function goNext(step: number) {
 }
 
 // Step 2: Architect Outline
-// const outlineList = ref([...])
 
 function addHeading() {
   outlineList.value.push({ id: Date.now(), text: 'Nuevo Encabezado', included: true })
@@ -91,6 +94,20 @@ function removeHeading(id: number) {
 }
 
 const draggedItemIndex = ref<number | null>(null)
+
+function addFAQTemplate() {
+  const lastId = outlineList.value.length > 0 ? Math.max(...outlineList.value.map(h => h.id)) : Date.now()
+  outlineList.value.push({ id: lastId + 1, text: 'Preguntas Frecuentes (FAQ)', included: true, budget: 'medium' })
+  outlineList.value.push({ id: lastId + 2, text: '¿Cuáles son los plazos principales?', included: true, budget: 'short' })
+  outlineList.value.push({ id: lastId + 3, text: '¿Qué documentación es necesaria?', included: true, budget: 'short' })
+}
+
+function addProsConsTemplate() {
+  const lastId = outlineList.value.length > 0 ? Math.max(...outlineList.value.map(h => h.id)) : Date.now()
+  outlineList.value.push({ id: lastId + 1, text: 'Ventajas y Desventajas', included: true, budget: 'medium' })
+  outlineList.value.push({ id: lastId + 2, text: 'Puntos Fuertes (Pros)', included: true, budget: 'medium' })
+  outlineList.value.push({ id: lastId + 3, text: 'Puntos Débiles (Contras)', included: true, budget: 'medium' })
+}
 
 function onDragStart(index: number) {
   draggedItemIndex.value = index
@@ -143,8 +160,90 @@ function removeTag(tag: string) {
 
 // Step 3: View & Editor
 const viewMode = ref<'editor' | 'demo'>('demo')
-const seoScore = ref(85)
 const showVersionHistory = ref(false)
+
+/**
+ * Dynamic SEO Score Calculation
+ * Criteria:
+ * 1. Title presence (H1) -> 20 pts
+ * 2. Article length (> 600 words) -> 25 pts
+ * 3. Keyword density (Presence of tags) -> 20 pts
+ * 4. Structure (H2/H3 presence) -> 15 pts
+ * 5. Multimedia/Links (Markdown links presence) -> 10 pts
+ * 6. Readability (Lists presence) -> 10 pts
+ */
+const seoScore = computed(() => {
+  let score = 0
+  const content = generatedMarkdown.value
+  if (!content) return 0
+
+  // 1. H1 Check
+  if (/^#\s+.+$/m.test(content)) score += 20
+
+  // 2. Length Check
+  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length
+  if (wordCount > 600) score += 25
+  else if (wordCount > 300) score += 15
+
+  // 3. Keyword Density (Tags)
+  const tagsPresent = tags.value.filter(tag => 
+    new RegExp(tag, 'gi').test(content)
+  ).length
+  if (tags.value.length > 0) {
+    score += Math.min(20, Math.floor((tagsPresent / tags.value.length) * 20))
+  } else {
+    score += 20 // No tags to check, assume default
+  }
+
+  // 4. Structure (Subheadings)
+  if (/^##\s+.+$/m.test(content)) score += 10
+  if (/^###\s+.+$/m.test(content)) score += 5
+
+  // 5. Links
+  if (/\[.+\]\(.+\)/.test(content)) score += 10
+
+  // 6. Lists
+  if (/^\s*[-*+]\s+.+$/m.test(content) || /^\s*\d+\.\s+.+$/m.test(content)) score += 10
+
+  return score
+})
+
+const seoAnalysis = computed(() => {
+  const content = generatedMarkdown.value
+  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length
+  const tagsPresent = tags.value.filter(tag => new RegExp(tag, 'gi').test(content))
+  
+  return [
+    { label: 'Título H1 detectado', value: /^#\s+.+$/m.test(content) },
+    { label: 'Longitud óptima (>600 palabras)', value: wordCount > 600 },
+    { label: 'Palabras clave integradas', value: tags.value.length > 0 && tagsPresent.length === tags.value.length },
+    { label: 'Subencabezados (H2/H3)', value: /^##\s+.+$/m.test(content) },
+    { label: 'Enlaces de referencia', value: /\[.+\]\(.+\)/.test(content) },
+    { label: 'Listas para legibilidad', value: /^\s*[-*+]\s+.+$/m.test(content) || /^\s*\d+\.\s+.+$/m.test(content) }
+  ]
+})
+
+const googleTitle = computed(() => {
+  const match = generatedMarkdown.value.match(/^#\s+(.+)$/m)
+  return match ? match[1] : blogTitle.value
+})
+
+const googleSnippet = computed(() => {
+  // Take first paragraph after H1
+  const lines = generatedMarkdown.value.split('\n')
+  const firstPara = lines.find(l => l.trim().length > 50 && !l.startsWith('#'))
+  return (firstPara || 'Visualiza cómo aparecerá tu noticia en los resultados de búsqueda de Google. Optimiza el contenido para atraer más clics.').substring(0, 160) + '...'
+})
+
+const SEO_PROMPT_TEMPLATE = `
+# [TITULO]
+
+[INTRODUCCION]
+
+## 1. [SECCION 1]
+
+[CONTENIDO 1]
+`
 
 const fakeArticle = `
 # Cómo Ser Guardia Civil: Pasos para el Ingreso
@@ -191,6 +290,9 @@ async function handleProceedToArchitect() {
     if (error?.message?.includes('429')) {
       errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar el plan conceptual con esta cuenta."
       setTimeout(() => { errorMessage.value = null }, 8000)
+    } else if (error?.message?.includes('503')) {
+      errorMessage.value = "⚠️ Los servidores de IA de Google están sobrecargados (503). Por favor, haz clic en Continuar de nuevo en unos segundos."
+      setTimeout(() => { errorMessage.value = null }, 8000)
     } else {
       errorMessage.value = "❌ Ocurrió un error inesperado al analizar la estructura. Intenta de nuevo."
       setTimeout(() => { errorMessage.value = null }, 5000)
@@ -212,6 +314,9 @@ async function handleGenerateArticle() {
      if (error?.message?.includes('429')) {
        errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar otro artículo con esta cuenta."
        setTimeout(() => { errorMessage.value = null }, 8000)
+     } else if (error?.message?.includes('503')) {
+       errorMessage.value = "⚠️ Los servidores de IA de Google están sobrecargados (503). Por favor, inténtalo de nuevo en unos instantes."
+       setTimeout(() => { errorMessage.value = null }, 8000)
      } else {
        errorMessage.value = "❌ Ocurrió un error inesperado al generar el artículo. Intenta de nuevo."
        setTimeout(() => { errorMessage.value = null }, 5000)
@@ -220,6 +325,11 @@ async function handleGenerateArticle() {
 }
 
 const generatedMarkdown = ref(fakeArticle)
+
+const renderedMarkdown = computed(() => {
+  const rawHtml = marked.parse(generatedMarkdown.value) as string
+  return DOMPurify.sanitize(rawHtml)
+})
 
 
 </script>
@@ -239,9 +349,9 @@ const generatedMarkdown = ref(fakeArticle)
           
           <!-- Stepper indicator -->
           <div class="flex items-center space-x-2 sm:space-x-4 text-xs sm:text-sm font-semibold text-slate-500 bg-slate-100/80 p-1.5 rounded-full z-10">
-             <button @click="currentStep = 1" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 1 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">1. Definir</button>
+             <button @click="currentStep = 1" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 1 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">1. Definición</button>
              <svg class="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-             <button @click="currentStep = 2" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 2 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">2. Arquitectura</button>
+             <button @click="currentStep = 2" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 2 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">2. Diseño</button>
              <svg class="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
              <button @click="currentStep = 3" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 3 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">3. Revisar</button>
           </div>
@@ -278,7 +388,7 @@ const generatedMarkdown = ref(fakeArticle)
     </transition>
 
     <!-- Main Content -->
-    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 sm:mt-12">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 sm:mt-12">
       
       <transition 
         enter-active-class="transition-opacity duration-300 ease-out" 
@@ -292,109 +402,161 @@ const generatedMarkdown = ref(fakeArticle)
         <!-- STEP 1: INITIAL DEFINITION -->
         <div v-if="currentStep === 1" class="space-y-8" key="step1">
           <div class="text-center max-w-2xl mx-auto mb-10">
-            <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl mb-4">¿De qué trata la historia?</h1>
+            <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl mb-4">¿De qué trata la noticia?</h1>
             <p class="text-lg text-slate-500">Agrega el título o pega URLs de referencia abajo. La IA lo organizará por ti.</p>
           </div>
 
-          <div class="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden ring-1 ring-slate-900/5">
-            <div class="p-8 space-y-8">
-              
-              <!-- Quick Start Title -->
-              <div>
-                <label for="blog-title" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">Título del Blog</label>
-                <input
-                  id="blog-title"
-                  v-model="blogTitle"
-                  type="text"
-                  class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-lg sm:leading-relaxed transition-shadow"
-                  placeholder="Ej. Cómo ser Guardia Civil, pasos para ingresar..."
-                />
-                <button 
-                  @click="handleSuggestTopics" 
-                  :disabled="suggestTopicsLoading"
-                  class="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100 disabled:opacity-75 disabled:cursor-not-allowed"
-                >
-                  <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.06l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.06 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 10-1.061 1.06l1.06 1.061z" /></svg>
-                  <span v-if="suggestTopicsLoading">Generando sugerencias...</span>
-                  <span v-else>Sugerir temas con IA</span>
-                </button>
-              </div>
-
-              <!-- Puntos Clave Input -->
-              <div class="pt-6 border-t border-slate-100">
-                <label for="puntos-clave" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">Puntos clave (Opcional)</label>
-                <div class="flex gap-2 mb-4">
-                  <input 
-                    id="puntos-clave"
-                    v-model="newTag" 
-                    @keydown.enter.prevent="addTag"
-                    type="text" 
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
-                    placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- MAIN CONTENT -->
+            <div class="lg:col-span-3 bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden ring-1 ring-slate-900/5">
+              <div class="p-8 space-y-8">
+                
+                <!-- Quick Start Title -->
+                <div>
+                  <label for="blog-title" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">Título del Blog</label>
+                  <input
+                    id="blog-title"
+                    v-model="blogTitle"
+                    type="text"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-lg sm:leading-relaxed transition-shadow"
+                    placeholder="Ej. Cómo ser Guardia Civil, pasos para ingresar..."
                   />
-                  <button @click="addTag" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors border border-slate-200 shadow-sm shrink-0">
-                    Añadir
+                  <button 
+                    @click="handleSuggestTopics" 
+                    :disabled="suggestTopicsLoading"
+                    class="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100 disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.06l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.06 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 10-1.061 1.06l1.06 1.061z" /></svg>
+                    <span v-if="suggestTopicsLoading">Generando sugerencias...</span>
+                    <span v-else>Sugerir temas con IA</span>
                   </button>
                 </div>
-                
-                <!-- Tags List Inline -->
-                <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
-                  <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {{ tag }}
-                    <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 rounded-full p-0.5" title="Eliminar punto clave">
-                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </span>
-                </div>
-              </div>
 
-              <!-- URL Scraper -->
-              <div class="pt-6 border-t border-slate-100">
-                <label for="reference-url" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">URLs de Referencia</label>
-                <input
-                  id="reference-url"
-                  v-model="referenceUrl"
-                  @keydown.enter.prevent="handleScrape"
-                  type="text"
-                  class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
-                  placeholder="Pega un enlace y pulsa Enter..."
-                />
-                
-                <!-- Smart URL Scraper Feedback -->
-                <div v-if="isScraping" class="mt-4 flex items-center gap-2 text-sm text-indigo-600 font-medium bg-indigo-50 p-3 rounded-lg w-fit transition-all duration-300">
-                  <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  Analizando URLs...
+                <!-- Puntos Clave Input -->
+                <div class="pt-6 border-t border-slate-100">
+                  <div class="mb-4">
+                    <label for="puntos-clave" class="block text-sm font-semibold leading-6 text-slate-900 mb-1">Puntos clave (Opcional)</label>
+                    <p class="text-xs text-slate-500">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
+                  </div>
+                  <div class="flex gap-2 mb-4">
+                    <input 
+                      id="puntos-clave"
+                      v-model="newTag" 
+                      @keydown.enter.prevent="addTag"
+                      type="text" 
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
+                      placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
+                    />
+                    <button @click="addTag" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors border border-slate-200 shadow-sm shrink-0">
+                      Añadir
+                    </button>
+                  </div>
+                  
+                  <!-- Tags List Inline -->
+                  <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
+                    <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      {{ tag }}
+                      <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 rounded-full p-0.5" title="Eliminar punto clave">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  </div>
                 </div>
-                <div v-else-if="scrapedUrls.length > 0" class="mt-4 space-y-2 transition-all duration-300">
-                  <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Lectura de fuentes completada:</p>
-                  <div class="flex flex-wrap gap-2">
-                    <div v-for="url in scrapedUrls" :key="url.url" class="inline-flex items-center gap-2 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
-                      <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
-                      {{ url.title }}
+
+                <!-- URL Scraper -->
+                <div class="pt-6 border-t border-slate-100">
+                  <label for="reference-url" class="block text-sm font-semibold leading-6 text-slate-900 mb-2">URLs de Referencia</label>
+                  <input
+                    id="reference-url"
+                    v-model="referenceUrl"
+                    @keydown.enter.prevent="handleScrape"
+                    type="text"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
+                    placeholder="Pega un enlace y pulsa Enter..."
+                  />
+                  
+                  <!-- Smart URL Scraper Feedback -->
+                  <div v-if="isScraping" class="mt-4 flex items-center gap-2 text-sm text-indigo-600 font-medium bg-indigo-50 p-3 rounded-lg w-fit transition-all duration-300">
+                    <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Analizando URLs...
+                  </div>
+                  <div v-else-if="scrapedReferences.length > 0" class="mt-4 space-y-2 transition-all duration-300">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Lectura de fuentes completada:</p>
+                    <div class="flex flex-wrap gap-2">
+                      <div v-for="url in scrapedReferences" :key="url.url" class="inline-flex items-center gap-2 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
+                        {{ url.title }}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+              
+              <div class="p-8 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <button 
+                  @click="handleProceedToArchitect" 
+                  :disabled="architectLoading"
+                  class="group inline-flex items-center justify-center rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  <div v-if="architectLoading" class="flex items-center gap-2">
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    Redactando Plan...
+                  </div>
+                  <div v-else class="flex items-center">
+                    Continuar a Diseño
+                    <svg class="ml-2 -mr-1 h-5 w-5 group-hover:translate-x-1 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" /></svg>
+                  </div>
+                </button>
+              </div>
+            </div>
 
-            </div>
-            
-            <div class="p-8 border-t border-slate-100 bg-slate-50 flex justify-end">
-              <button 
-                @click="handleProceedToArchitect" 
-                :disabled="architectLoading"
-                class="group inline-flex items-center justify-center rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
-              >
-                <div v-if="architectLoading" class="flex items-center gap-2">
-                  <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  Redactando Plan...
+            <!-- SIDEBAR: TARGETING -->
+            <aside class="lg:col-span-1 space-y-6">
+              <div class="bg-white rounded-3xl shadow-lg border border-slate-100 p-6 space-y-6 lg:sticky lg:top-24">
+                <div class="flex items-center gap-2 pb-4 border-b border-slate-50">
+                  <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                  <h3 class="font-bold text-slate-800">Preferencias</h3>
                 </div>
-                <div v-else class="flex items-center">
-                  Continuar a Arquitectura
-                  <svg class="ml-2 -mr-1 h-5 w-5 group-hover:translate-x-1 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" /></svg>
+
+                <div>
+                  <label for="audience" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Público Objetivo</label>
+                  <select
+                    id="audience"
+                    v-model="audience"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-indigo-600 sm:text-sm bg-slate-50/50"
+                  >
+                    <option value="General">General (Todos los públicos)</option>
+                    <option value="Principiantes">Principiantes / Novatos</option>
+                    <option value="Expertos">Expertos / Profesionales</option>
+                    <option value="Estudiantes">Estudiantes / Académico</option>
+                    <option value="Técnico">Perfil Técnico / Desarrolladores</option>
+                  </select>
                 </div>
-              </button>
-            </div>
+
+                <div>
+                  <label for="intent" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Intención de Búsqueda</label>
+                  <select
+                    id="intent"
+                    v-model="searchIntent"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-indigo-600 sm:text-sm bg-slate-50/50"
+                  >
+                    <option value="Informativo">Informativo (Noticia / Saber qué)</option>
+                    <option value="Tutorial">Tutorial / Guía Paso a Paso</option>
+                    <option value="Transaccional">Transaccional (Venta / Trámite)</option>
+                    <option value="Comparativo">Comparativo (Cual es mejor)</option>
+                  </select>
+                </div>
+
+                <div class="pt-4 border-t border-slate-50">
+                   <p class="text-[10px] text-slate-400 leading-relaxed font-medium">
+                     <span class="text-indigo-500">Pro Tip:</span> Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
+                   </p>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
         <!-- STEP 2: THE ARCHITECT -->
@@ -404,20 +566,20 @@ const generatedMarkdown = ref(fakeArticle)
             <p class="text-slate-500">Ajusta la estructura principal y la configuración antes de generar el borrador.</p>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:h-[calc(100vh-10rem)]">
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
             
             <!-- Left col: Interactive Outline and Links -->
-            <div class="lg:col-span-2 flex flex-col gap-6 lg:sticky lg:top-24 max-h-[calc(100vh-10rem)]">
+            <div class="lg:col-span-3 flex flex-col gap-6">
               
               <!-- Outline Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch flex-1 overflow-hidden min-h-[50%]">
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0">
               <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
                 Esquema Interactivo
               </h2>
               <p class="text-sm text-slate-500 mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
               
-              <ul class="space-y-3 overflow-y-auto flex-1 pr-2">
+              <ul class="space-y-3 pr-2">
                 <li v-for="(item, index) in outlineList" :key="item.id" 
                     draggable="true"
                     @dragstart="onDragStart(index)"
@@ -438,12 +600,27 @@ const generatedMarkdown = ref(fakeArticle)
                   </div>
 
                   <!-- Editable Input Text -->
-                  <input 
-                    type="text" 
-                    v-model="item.text" 
-                    class="text-sm font-semibold text-slate-800 flex-grow border-0 border-b border-transparent focus:border-indigo-600 focus:ring-0 bg-transparent px-1 py-1 transition-all" 
-                    :class="{'line-through text-slate-500': !item.included}" 
-                  />
+                  <div class="flex-grow flex flex-col sm:flex-row sm:items-center gap-2">
+                    <input 
+                      type="text" 
+                      v-model="item.text" 
+                      class="text-sm font-semibold text-slate-800 flex-grow border-0 border-b border-transparent focus:border-indigo-600 focus:ring-0 bg-transparent px-1 py-1 transition-all" 
+                      :class="{'line-through text-slate-500': !item.included}" 
+                    />
+                    
+                    <!-- Budget Selector -->
+                    <div class="flex items-center gap-1 shrink-0 bg-slate-50 p-1 rounded-lg border border-slate-100" v-if="item.included">
+                      <button 
+                        v-for="b in ['short', 'medium', 'long']" 
+                        :key="b"
+                        @click="item.budget = (b as any)"
+                        class="px-2 py-0.5 text-[10px] font-bold uppercase rounded transition-all"
+                        :class="item.budget === b ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'"
+                      >
+                        {{ b === 'short' ? 'S' : b === 'medium' ? 'M' : 'L' }}
+                      </button>
+                    </div>
+                  </div>
                   
                   <!-- Delete Action -->
                   <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
@@ -452,23 +629,31 @@ const generatedMarkdown = ref(fakeArticle)
                 </li>
               </ul>
               
-              <div class="mt-4 flex justify-start pt-4 border-t border-slate-100">
+              <div class="mt-4 flex flex-wrap justify-between pt-4 border-t border-slate-100 gap-3">
                 <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-lg">
                   <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                  Añadir nuevo encabezado
+                  Encabezado
                 </button>
+                <div class="flex gap-2">
+                  <button @click="addFAQTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg">
+                    <span>+ FAQ</span>
+                  </button>
+                  <button @click="addProsConsTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg">
+                    <span>+ Pros/Contras</span>
+                  </button>
+                </div>
               </div>
               </div>
 
               <!-- Suggested Links Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch overflow-hidden shrink-0 max-h-[50%]">
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0">
                 <h2 class="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
                   <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                   Enlaces de Referencia Sugeridos
                 </h2>
                 <p class="text-sm text-slate-500 mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
                 
-                <ul class="space-y-3 overflow-y-auto flex-1 pr-2">
+                <ul class="space-y-3 pr-2">
                   <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all" :class="{'opacity-60 bg-slate-50': !link.included}">
                     
                     <!-- Checkbox -->
@@ -605,7 +790,7 @@ const generatedMarkdown = ref(fakeArticle)
               
               <div class="p-4 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-between gap-3">
                 <button @click="goNext(1)" class="w-1/3 inline-flex items-center justify-center rounded-xl bg-white border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600">
-                  <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 14l-2-2m0 0l2-2m-2 2h8m-9 5a9 9 0 110-18 9 9 0 010 18z" /></svg>
+                  <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                   Volver
                 </button>
                 <button 
@@ -633,15 +818,22 @@ const generatedMarkdown = ref(fakeArticle)
           <!-- Top Tool Bar -->
           <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
             
-            <!-- SEO Scorecard -->
-            <div class="flex items-center gap-3 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
-               <div class="relative flex h-3 w-3">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </div>
-              <div class="flex flex-col">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Puntuación SEO</span>
-                <span class="text-sm font-extrabold text-slate-700 leading-none">{{ seoScore }}/100</span>
+            <div class="flex items-center gap-3">
+              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-indigo-600">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                Volver
+              </button>
+
+              <!-- SEO Scorecard -->
+              <div class="flex items-center gap-3 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
+                 <div class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Puntuación SEO</span>
+                  <span class="text-sm font-extrabold text-slate-700 leading-none">{{ seoScore }}/100</span>
+                </div>
               </div>
             </div>
 
@@ -654,10 +846,6 @@ const generatedMarkdown = ref(fakeArticle)
 
             <!-- Actions (Version / Export) -->
             <div class="flex items-center gap-2">
-              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-indigo-600">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 14l-2-2m0 0l2-2m-2 2h8m-9 5a9 9 0 110-18 9 9 0 010 18z" /></svg>
-                Volver
-              </button>
               <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:ring-2 focus:ring-indigo-600">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Historial
@@ -670,107 +858,89 @@ const generatedMarkdown = ref(fakeArticle)
           </div>
 
           <!-- Workplace Area -->
-          <div class="flex flex-col md:flex-row gap-6 min-h-[600px] lg:h-[calc(100vh-14rem)]">
+          <div class="flex flex-col lg:flex-row gap-6 min-h-[600px] lg:h-[calc(100vh-14rem)]">
             
-            <!-- EDITOR VIEW (Markdown code representation) -->
-            <div v-show="viewMode === 'editor'" class="flex-1 bg-[#1e1e1e] rounded-2xl shadow-xl border border-slate-800 flex flex-col overflow-hidden animate-fade-in h-full">
-              <div class="px-4 py-2 bg-[#2d2d2d] border-b border-[#404040] flex items-center justify-between">
-                <span class="text-xs font-mono text-slate-400">guardia-civil-borrador.md</span>
-                <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
-                  <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                  Monaco Engine
-                </span>
+            <!-- Main Content Area -->
+            <div class="flex-1 flex flex-col gap-6">
+              <!-- EDITOR VIEW -->
+              <div v-show="viewMode === 'editor'" class="flex-1 bg-[#1e1e1e] rounded-2xl shadow-xl border border-slate-800 flex flex-col overflow-hidden animate-fade-in h-full">
+                <div class="px-4 py-2 bg-[#2d2d2d] border-b border-[#404040] flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <span class="text-xs font-mono text-slate-400">borrador.md</span>
+                    <div class="h-4 w-px bg-slate-700"></div>
+                    <div class="flex items-center gap-2">
+                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">✨ Simplificar</button>
+                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">🚀 Viralizar</button>
+                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">⚙️ +Técnico</button>
+                    </div>
+                  </div>
+                  <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
+                    <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                    Live Engine
+                  </span>
+                </div>
+                <textarea
+                  class="flex-1 w-full h-full bg-transparent text-[#d4d4d4] font-mono text-sm p-6 resize-none outline-none leading-relaxed"
+                  spellcheck="false"
+                  v-model="generatedMarkdown"
+                ></textarea>
               </div>
-              <textarea
-                class="flex-1 w-full h-full bg-transparent text-[#d4d4d4] font-mono text-sm p-6 resize-none outline-none leading-relaxed"
-                spellcheck="false"
-                :value="fakeArticle"
-              ></textarea>
+
+              <!-- DEMO VIEW -->
+              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-y-auto animate-fade-in relative group p-8 sm:p-12 h-full">
+                <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-semibold whitespace-nowrap shadow-sm border border-indigo-200">✨ Vista Previa Lectura</span>
+                </div>
+                
+                <article v-html="renderedMarkdown" class="prose prose-slate prose-indigo max-w-none prose-headings:font-extrabold prose-h1:text-4xl sm:prose-h1:text-5xl prose-p:text-lg prose-p:leading-relaxed prose-li:text-lg prose-img:rounded-2xl"></article>
+              </div>
             </div>
 
-            <!-- DEMO VIEW (Rich rendered view) -->
-            <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-y-auto animate-fade-in relative group p-8 sm:p-12 h-full">
-              <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded font-semibold whitespace-nowrap shadow-sm border border-indigo-200">✨ Clic para editar bloque</span>
-              </div>
+            <!-- SEO & Snippet Sidebar -->
+            <div class="w-full lg:w-80 flex flex-col gap-6 shrink-0 h-full overflow-y-auto pr-1">
               
-              <article class="max-w-none space-y-8 text-slate-700 text-lg">
-                
-                <h1 class="group relative text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-6">
-                  Cómo Ser Guardia Civil: Pasos para el Ingreso
-                  <button class="absolute -left-14 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg shadow-sm border border-indigo-100 bg-white" title="Regenerar Título">
-                    <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                  </button>
-                </h1>
-                
-                <div class="group relative rounded-xl hover:bg-slate-50 transition-colors p-4 -mx-4 border border-transparent hover:border-slate-200">
-                  <p class="text-xl text-slate-600 leading-relaxed m-0">¿Estás preparado para dar el paso y entrar en la Guardia Civil? Es una de las instituciones más respetadas de España, ofreciendo una carrera estable y gratificante. En esta guía, desglosamos exactamente lo que necesitas saber para aprobar las oposiciones y conseguir tu uniforme.</p>
-                  <button class="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-md shadow-sm hover:bg-indigo-50">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Reescribir
-                  </button>
+              <!-- Google Snippet Simulator -->
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                  <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                  <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Vista previa Google</h3>
                 </div>
-                
-                <div class="group relative rounded-xl hover:bg-slate-50 transition-colors p-4 -mx-4 border border-transparent hover:border-slate-200">
-                  <h2 class="mt-0 text-2xl font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">1. Requisitos Básicos</h2>
-                  <p class="mb-4">Antes de empezar a estudiar, asegúrate de cumplir los criterios mínimos:</p>
-                  <ul class="mb-0 list-disc list-inside space-y-2">
-                    <li><strong>Edad:</strong> Entre 18 y 40 años.</li>
-                    <li><strong>Nacionalidad:</strong> Ciudadanía española.</li>
-                    <li><strong>Estudios:</strong> El requisito mínimo es la ESO.</li>
-                    <li><strong>Físico:</strong> Sin tatuajes excluyentes visibles con el uniforme.</li>
-                  </ul>
-                  <button class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-md shadow-sm hover:bg-indigo-50">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Reescribir
-                  </button>
-                </div>
-
-                <!-- AI Image Slot Placeholder -->
-                <div class="not-prose my-8">
-                  <div class="border-2 border-dashed border-indigo-200 bg-indigo-50/50 rounded-2xl p-8 text-center hover:bg-indigo-50 cursor-pointer transition-colors group/upload relative">
-                    <div class="mx-auto h-12 w-12 text-indigo-300 mb-3 flex items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-indigo-100 group-hover/upload:scale-110 transition-transform">
-                      <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    </div>
-                    <span class="mt-2 block text-sm font-semibold text-indigo-900">Arrastra una imagen aquí</span>
-                    <span class="mt-1 block text-xs text-indigo-500">Sugerencia de IA: "Coloca una foto de la academia de la Guardia Civil aquí"</span>
-                    <button class="mt-4 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50 transition-colors">Buscar Archivos</button>
+                <div class="p-5 font-sans space-y-1">
+                  <div class="text-[14px] text-slate-600 line-clamp-1">https://tusitio.es › noticias</div>
+                  <div class="text-[20px] text-[#1a0dab] hover:underline cursor-pointer leading-tight line-clamp-2">{{ googleTitle }}</div>
+                  <div class="text-[14px] text-[#4d5156] leading-relaxed line-clamp-3">
+                    <span class="text-slate-500">hace 2 horas — </span>{{ googleSnippet }}
                   </div>
                 </div>
+              </div>
 
-                <div class="group relative rounded-xl hover:bg-slate-50 transition-colors p-4 -mx-4 border border-transparent hover:border-slate-200">
-                  <h2 class="mt-0 text-2xl font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">2. Las Pruebas Físicas</h2>
-                  <p class="mb-0 leading-relaxed">Aquí es donde muchos fallan, pero con preparación, puedes sobresalir. Las pruebas incluyen un sprint de 50m, 1000m de carrera, flexiones y natación de 50m.</p>
-                  <button class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-md shadow-sm hover:bg-indigo-50">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Reescribir
-                  </button>
+              <!-- SEO Verification Checklist -->
+              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1">
+                <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Verificación SEO</h3>
+                  <span class="text-xs font-bold text-indigo-600">{{ seoScore }}%</span>
                 </div>
-                
-                <!-- Notice component injected by AI -->
-                <div class="my-6 rounded-xl border-l-4 border-amber-400 bg-amber-50 p-4 relative group">
-                  <div class="flex mr-12">
-                    <div class="flex-shrink-0">
-                      <svg class="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" /></svg>
+                <div class="p-5 space-y-4">
+                  <div v-for="item in seoAnalysis" :key="item.label" class="flex items-start gap-3">
+                    <div class="mt-0.5 shrink-0">
+                      <svg v-if="item.value" class="h-5 w-5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                      <svg v-else class="h-5 w-5 text-slate-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
                     </div>
-                    <div class="ml-3">
-                      <p class="text-sm font-medium text-amber-800">Consejo Experto: Empieza a entrenar al menos 6 meses antes del examen.</p>
+                    <span class="text-xs font-medium" :class="item.value ? 'text-slate-800' : 'text-slate-400'">{{ item.label }}</span>
+                  </div>
+                  
+                  <!-- Smart Tips -->
+                  <div class="mt-6 pt-6 border-t border-slate-100">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Consejo de IA</div>
+                    <div class="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+                      <p class="text-[11px] text-indigo-700 leading-relaxed font-medium">
+                        {{ seoScore < 90 ? 'Añade más palabras clave secundarias para mejorar la autoridad temática.' : '¡Excelente trabajo! El artículo cumple con todos los estándares SEO recomendados.' }}
+                      </p>
                     </div>
                   </div>
-                  <button class="absolute top-1/2 -translate-y-1/2 right-4 opacity-0 group-hover:opacity-100 transition-opacity p-2 text-amber-600 bg-amber-50 border border-amber-200 rounded-md shadow-sm hover:bg-amber-100" title="Reescribir Consejo">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                  </button>
                 </div>
+              </div>
 
-                <div class="group relative rounded-xl hover:bg-slate-50 transition-colors p-4 -mx-4 border border-transparent hover:border-slate-200">
-                  <h2 class="mt-0 text-2xl font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">3. El Examen Teórico</h2>
-                  <p class="mb-0 leading-relaxed">El temario consta de 25 temas que incluyen derecho constitucional, derecho penal y sociología. Te enfrentarás a un examen tipo test, una prueba de ortografía, y una evaluación psicotécnica.</p>
-                  <button class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-md shadow-sm hover:bg-indigo-50">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Reescribir
-                  </button>
-                </div>
-              </article>
             </div>
           </div>
         </div>

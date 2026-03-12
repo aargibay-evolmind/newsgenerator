@@ -33,7 +33,8 @@ class SuggestTopicsService
             'required' => ['topics']
         ];
 
-        $result = $this->gemini->generateContent($prompt, 'gemini-3-flash-preview', $schema);
+        $models = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+        $result = $this->gemini->generateContent($prompt, $models, $schema);
 
         // Parse the deep nested structure response of the REST API
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {

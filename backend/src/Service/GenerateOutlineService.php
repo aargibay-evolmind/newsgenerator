@@ -12,14 +12,19 @@ class GenerateOutlineService
      * @param string $title
      * @param array<string> $keywords
      * @param array<string> $urls
+     * @param string $audience
+     * @param string $searchIntent
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keywords, array $urls): array
+    public function generate(string $title, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo'): array
     {
         $prompt = sprintf(
             "Actúa como el Arquitecto Jefe de contenido para un blog de noticias de alta retención. Vas a diseñar el esquema para un artículo titulado: '%s'.\n",
             $title
         );
+
+        $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
+        $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
 
         if (!empty($keywords)) {
             $prompt .= sprintf("Debes asegurarte de cubrir obligatoriamente los siguientes Puntos Clave: %s.\n", implode(', ', $keywords));
@@ -59,7 +64,8 @@ Requisitos:
             'required' => ['outline', 'suggestedLinks']
         ];
 
-        $result = $this->gemini->generateContent($prompt, 'gemini-3-flash-preview', $schema);
+        $models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        $result = $this->gemini->generateContent($prompt, $models, $schema);
 
         // Parse JSON output
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
@@ -77,7 +83,8 @@ Requisitos:
                     $responseData['outline'][] = [
                         'id' => time() + $index, // Mocked ID
                         'text' => $item['text'] ?? 'Nuevo Encabezado',
-                        'included' => true
+                        'included' => true,
+                        'budget' => 'medium'
                     ];
                 }
             }

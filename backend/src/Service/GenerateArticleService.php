@@ -22,11 +22,15 @@ class GenerateArticleService
         $includeTables = $payload['includeTables'] ?? false;
         $outline = $payload['outline'] ?? [];
         $references = $payload['references'] ?? [];
+        $audience = $payload['audience'] ?? 'General';
+        $searchIntent = $payload['searchIntent'] ?? 'Informativo';
 
         // Build the Prompt Guidelines
         $prompt = "Eres un redactor experto y periodista de un blog de alta autoridad. Redactarás un artículo final optimizado para SEO, formateado estrictamente en formato Markdown estándar.\n\n";
 
         $prompt .= sprintf("**Tema Principal y Título sugerido:** %s\n", $title);
+        $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
+        $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
         
         if (!empty($keywords)) {
             $prompt .= sprintf("**Palabras/Conceptos Clave a integrar:** %s\n", implode(', ', $keywords));
@@ -49,7 +53,12 @@ class GenerateArticleService
         // Inject the strictly allowed outline
         $prompt .= "\n**Estructura del Artículo (Sigue este índice exacto como encabezados principales):**\n";
         foreach ($outline as $item) {
-            $prompt .= sprintf("- %s\n", $item['text'] ?? 'Sección');
+            $budget = $item['budget'] ?? 'medium';
+            $budgetInstr = "";
+            if ($budget === 'short') $budgetInstr = " (Breve y conciso)";
+            if ($budget === 'long') $budgetInstr = " (Extenso, profundo y detallado)";
+            
+            $prompt .= sprintf("- %s%s\n", $item['text'] ?? 'Sección', $budgetInstr);
         }
 
         // Integrate references into content if chosen
@@ -63,7 +72,8 @@ class GenerateArticleService
         $prompt .= "\n\nRedacta el contenido en español utilizando saltos de línea y Markdown válido.";
 
         // Direct call to Gemini WITHOUT schema constraints for free-form markdown response
-        $result = $this->gemini->generateContent($prompt, 'gemini-3-pro-preview');
+        $models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        $result = $this->gemini->generateContent($prompt, $models);
 
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
             return $result['candidates'][0]['content']['parts'][0]['text'];
