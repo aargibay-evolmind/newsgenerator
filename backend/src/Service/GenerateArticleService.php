@@ -29,9 +29,20 @@ class GenerateArticleService
         // Build the Prompt Guidelines
         $prompt = "Eres un redactor experto y periodista de un blog de alta autoridad. Redactarás un artículo final optimizado para SEO, formateado estrictamente en formato Markdown estándar.\n\n";
 
+        $prompt .= sprintf("**Principios editoriales que debes seguir:**\n");
+        $prompt .= sprintf("- estructura jerárquica clara (H1, H2, H3)\n");
+        $prompt .= sprintf("- introducción que contextualice el tema\n");
+        $prompt .= sprintf("- desarrollo progresivo del contenido\n");
+        $prompt .= sprintf("- uso de listas para mejorar escaneabilidad\n");
+        $prompt .= sprintf("- secciones conectadas de forma lógica\n");
+        $prompt .= sprintf("- conclusión que sintetice los puntos clave\n");
+        
         $prompt .= sprintf("**Tema Principal y Título sugerido:** %s\n", $title);
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
+        $prompt .= "\n**Instrucción de Navegación (CRÍTICO):**\n";
+        $prompt .= "- Después de la introducción, incluye una 'Tabla de contenidos' colapsable usando las etiquetas HTML `<details>` y `<summary>`. No añadas un encabezado Markdown (# o ##) para esta tabla, usa la etiqueta `<summary>` con el texto 'Tabla de contenidos'.\n";
+        $prompt .= "- Dentro del `<details>`, crea una lista Markdown de enlaces internos a todos los encabezados H2 del artículo (ej: `[Título de la sección](#titulo-de-la-sección)`).\n";
 
         if (!empty(trim($additionalContext))) {
             $prompt .= sprintf("**Contexto y directrices adicionales del redactor (sigue estas instrucciones con prioridad):** %s\n", $additionalContext);

@@ -66,6 +66,7 @@ export interface RegenerateSectionRequest {
   sectionHeading: string;
   currentContent: string;
   context?: string;
+  guidelines?: string;
 }
 
 export interface RegenerateSectionResponse {

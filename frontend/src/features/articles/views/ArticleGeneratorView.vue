@@ -162,6 +162,7 @@ function removeTag(tag: string) {
 // Step 3: View & Editor
 const viewMode = ref<'editor' | 'demo'>('demo')
 const showVersionHistory = ref(false)
+const regenGuidelines = ref<Record<number, string>>({})
 
 /**
  * Dynamic SEO Score Calculation
@@ -342,6 +343,7 @@ interface ParsedSection {
   content: string      // body text after the heading
   html: string         // rendered body HTML
   isRegenerating: boolean
+  h1Html?: string
 }
 
 const _sectionRegen = ref<Record<number, boolean>>({})
@@ -358,7 +360,19 @@ const parsedSections = computed<ParsedSection[]>(() => {
       const isHeading = firstLine.startsWith('## ')
       const heading = isHeading ? firstLine : ''
       const headingText = isHeading ? heading.replace(/^##\s+/, '') : (idx === 0 ? 'Introducción' : '')
-      const content = isHeading ? lines.slice(1).join('\n').trim() : part.trim()
+      
+      let content = isHeading ? lines.slice(1).join('\n').trim() : part.trim()
+      let h1Html = ''
+
+      // Special handling for section 0 to split H1 if present
+      if (idx === 0) {
+        const h1Match = content.match(/^#\s+.+$/m)
+        if (h1Match) {
+          h1Html = DOMPurify.sanitize(marked.parse(h1Match[0]) as string)
+          content = content.replace(/^#\s+.+$/m, '').trim()
+        }
+      }
+
       const rawHtml = marked.parse(content) as string
       return {
         heading,
@@ -366,6 +380,7 @@ const parsedSections = computed<ParsedSection[]>(() => {
         content,
         html: DOMPurify.sanitize(rawHtml),
         isRegenerating: _sectionRegen.value[idx] ?? false,
+        h1Html
       }
     })
 })
@@ -389,6 +404,7 @@ async function handleRegenerateSection(sectionIdx: number) {
       sectionHeading: section.headingText,
       currentContent: section.content,
       context: additionalContext.value,
+      guidelines: regenGuidelines.value[sectionIdx] || '',
     })
     replaceSectionContent(sectionIdx, result.content)
   } catch (e: any) {
@@ -413,33 +429,33 @@ const renderedMarkdown = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-800 pb-20 font-sans">
+  <div class="min-h-screen bg-background text-text pb-20 font-sans">
     <!-- Top Navigation -->
     <nav class="bg-white sticky top-0 z-40 shadow-sm border-b border-transparent">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col sm:flex-row justify-between items-center h-auto sm:h-16 py-4 sm:py-0 gap-4">
           <div class="flex items-center gap-3">
-            <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">N</div>
-            <span class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 tracking-tight">
+            <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary flex items-center justify-center text-white font-bold">N</div>
+            <span class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary tracking-tight">
               NewsGen
             </span>
           </div>
           
           <!-- Stepper indicator -->
-          <div class="flex items-center space-x-2 sm:space-x-4 text-xs sm:text-sm font-semibold text-slate-500 bg-slate-100/80 p-1.5 rounded-full z-10">
-             <button @click="currentStep = 1" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 1 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">1. Definición</button>
-             <svg class="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-             <button @click="currentStep = 2" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 2 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">2. Diseño</button>
-             <svg class="h-4 w-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-             <button @click="currentStep = 3" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 3 ? 'bg-white shadow-sm text-indigo-600' : 'hover:text-slate-800'">3. Revisar</button>
+          <div class="flex items-center space-x-2 sm:space-x-4 text-xs sm:text-sm font-semibold text-secondary bg-secondary/10 p-1.5 rounded-full z-10">
+             <button @click="currentStep = 1" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 1 ? 'bg-white shadow-sm text-primary' : 'hover:text-text'">1. Definición</button>
+             <svg class="h-4 w-4 text-secondary/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+             <button @click="currentStep = 2" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 2 ? 'bg-white shadow-sm text-primary' : 'hover:text-text'">2. Diseño</button>
+             <svg class="h-4 w-4 text-secondary/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+             <button @click="currentStep = 3" class="flex items-center px-4 py-1.5 rounded-full transition-all" :class="currentStep === 3 ? 'bg-white shadow-sm text-primary' : 'hover:text-text'">3. Revisar</button>
           </div>
         </div>
       </div>
       
       <!-- Colored Progress Bar -->
-      <div class="absolute bottom-[-1px] left-0 h-0.5 w-full bg-slate-100">
+      <div class="absolute bottom-[-1px] left-0 h-0.5 w-full bg-secondary/10">
         <div 
-          class="h-full bg-indigo-600 transition-all duration-500 ease-out" 
+          class="h-full bg-primary transition-all duration-500 ease-out" 
           :style="{ width: currentStep === 1 ? '33.3%' : currentStep === 2 ? '66.6%' : '100%' }"
         ></div>
       </div>
@@ -480,27 +496,27 @@ const renderedMarkdown = computed(() => {
         <!-- STEP 1: INITIAL DEFINITION -->
         <div v-if="currentStep === 1" class="space-y-8" key="step1">
           <div class="text-center max-w-2xl mx-auto mb-10">
-            <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl mb-4">¿De qué trata la noticia?</h1>
-            <p class="text-lg text-slate-500">Agrega el título o pega URLs de referencia abajo. La IA lo organizará por ti.</p>
+            <h1 class="text-4xl font-extrabold tracking-tight text-text sm:text-5xl mb-4">¿De qué trata la noticia?</h1>
+            <p class="text-lg text-secondary">Agrega el título o pega URLs de referencia abajo. La IA lo organizará por ti.</p>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <!-- MAIN CONTENT -->
-            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ring-1 ring-slate-900/5">
+            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-secondary/10 overflow-hidden ring-1 ring-text/5">
               <div class="p-8 space-y-8">
                 
                 <!-- Quick Start Title -->
                 <div>
-                  <label for="blog-title" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Título de la Noticia</label>
+                  <label for="blog-title" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Título de la Noticia</label>
                   <input
                     id="blog-title"
                     v-model="blogTitle"
                     @input="titleError = false"
                     type="text"
-                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset sm:text-lg sm:leading-relaxed transition-all"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-text shadow-sm ring-1 ring-inset placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset sm:text-lg sm:leading-relaxed transition-all"
                     :class="titleError 
                       ? 'ring-red-400 focus:ring-red-400 bg-red-50/30' 
-                      : 'ring-slate-200 focus:ring-slate-400'"
+                      : 'ring-secondary/20 focus:ring-primary'"
                     placeholder="Ej. Cómo ser Guardia Civil, pasos para ingresar..."
                   />
                   <div v-if="titleError" class="mt-2 flex items-center gap-1.5 text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
@@ -511,30 +527,30 @@ const renderedMarkdown = computed(() => {
                     <button 
                       @click="handleSuggestTopics" 
                       :disabled="suggestTopicsLoading"
-                      class="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100 disabled:opacity-75 disabled:cursor-not-allowed"
+                      class="inline-flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors border border-primary/10 disabled:opacity-75 disabled:cursor-not-allowed"
                     >
-                      <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <svg v-if="suggestTopicsLoading" class="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                       <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6zM15.657 5.404a.75.75 0 10-1.06-1.06l-1.061 1.06a.75.75 0 001.06 1.06l1.06-1.06zM6.464 14.596a.75.75 0 10-1.06-1.06l-1.06 1.06a.75.75 0 001.06 1.06l1.06-1.06zM18 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0118 10zM5 10a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 015 10zM14.596 15.657a.75.75 0 001.06-1.06l-1.06-1.061a.75.75 0 10-1.06 1.06l1.06 1.06zM5.404 6.464a.75.75 0 001.06-1.06l-1.06-1.06a.75.75 0 10-1.061 1.06l1.06 1.061z" /></svg>
                       <span v-if="suggestTopicsLoading">Generando...</span>
                       <span v-else>Sugerir temas con IA</span>
                     </button>
 
                     <!-- Stacked selectable topics -->
-                    <div v-if="suggestedTopics.length > 0" class="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div class="flex items-center justify-between px-4 py-2 border-b border-indigo-100">
-                        <span class="text-xs font-bold text-indigo-600 uppercase tracking-widest">Sugerencias</span>
-                        <button @click="suggestedTopics = []" class="flex items-center justify-center h-6 w-6 rounded-full text-slate-400 hover:bg-indigo-100 hover:text-indigo-700 transition-colors" title="Limpiar sugerencias">
+                    <div v-if="suggestedTopics.length > 0" class="mt-3 rounded-2xl border border-primary/10 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div class="flex items-center justify-between px-4 py-2 border-b border-primary/10">
+                        <span class="text-xs font-bold text-primary uppercase tracking-widest">Sugerencias</span>
+                        <button @click="suggestedTopics = []" class="flex items-center justify-center h-6 w-6 rounded-full text-secondary hover:bg-primary/10 hover:text-primary transition-colors" title="Limpiar sugerencias">
                           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       </div>
-                      <div class="divide-y divide-indigo-100/70">
+                      <div class="divide-y divide-primary/5">
                         <button 
                           v-for="(topic, idx) in suggestedTopics" 
                           :key="idx"
                           @click="blogTitle = topic; suggestedTopics = []"
-                          class="w-full text-left px-4 py-3 text-sm font-medium text-slate-700 hover:bg-indigo-600 hover:text-white transition-colors duration-150 flex items-center gap-3 group"
+                          class="w-full text-left px-4 py-3 text-sm font-medium text-text hover:bg-primary hover:text-white transition-colors duration-150 flex items-center gap-3 group"
                         >
-                          <span class="shrink-0 h-5 w-5 rounded-full bg-indigo-100 group-hover:bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-indigo-600 group-hover:text-white transition-colors">{{ idx + 1 }}</span>
+                          <span class="shrink-0 h-5 w-5 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary transition-colors hover:text-white">{{ idx + 1 }}</span>
                           {{ topic }}
                         </button>
                       </div>
@@ -543,10 +559,10 @@ const renderedMarkdown = computed(() => {
                 </div>
 
                 <!-- Puntos Clave Input -->
-                <div class="pt-6 border-t border-slate-100">
+                <div class="pt-6 border-t border-secondary/10">
                   <div class="mb-4">
-                    <label for="puntos-clave" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Puntos clave <span class="normal-case font-medium text-slate-400">(Opcional)</span></label>
-                    <p class="text-xs text-slate-500">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
+                    <label for="puntos-clave" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Puntos clave <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
+                    <p class="text-xs text-secondary">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -554,19 +570,19 @@ const renderedMarkdown = computed(() => {
                       v-model="newTag" 
                       @keydown.enter.prevent="addTag"
                       type="text" 
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm"
                       placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
                     />
-                    <button @click="addTag" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors border border-slate-200 shadow-sm shrink-0">
+                    <button @click="addTag" class="px-4 py-2 bg-secondary/10 hover:bg-secondary/20 text-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 shadow-sm shrink-0">
                       Añadir
                     </button>
                   </div>
                   
                   <!-- Tags List Inline -->
                   <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
-                    <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 text-primary border border-primary/20">
                       {{ tag }}
-                      <button @click="removeTag(tag)" class="text-indigo-400 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 rounded-full p-0.5" title="Eliminar punto clave">
+                      <button @click="removeTag(tag)" class="text-primary/60 hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full p-0.5" title="Eliminar punto clave">
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     </span>
@@ -574,26 +590,26 @@ const renderedMarkdown = computed(() => {
                 </div>
 
                 <!-- URL Scraper -->
-                <div class="pt-6 border-t border-slate-100">
-                  <label for="reference-url" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">URLs de Referencia</label>
+                <div class="pt-6 border-t border-secondary/10">
+                  <label for="reference-url" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">URLs de Referencia</label>
                   <input
                     id="reference-url"
                     v-model="referenceUrl"
                     @keydown.enter.prevent="handleScrape"
                     type="text"
-                    class="block w-full rounded-2xl border-0 py-4 px-5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm sm:leading-relaxed transition-shadow"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-relaxed transition-shadow"
                     placeholder="Pega un enlace y pulsa Enter..."
                   />
                   
                   <!-- Smart URL Scraper Feedback -->
-                  <div v-if="isScraping" class="mt-4 flex items-center gap-2 text-sm text-indigo-600 font-medium bg-indigo-50 p-3 rounded-lg w-fit transition-all duration-300">
+                  <div v-if="isScraping" class="mt-4 flex items-center gap-2 text-sm text-primary font-medium bg-primary/10 p-3 rounded-lg w-fit transition-all duration-300">
                     <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                     Analizando URLs...
                   </div>
                   <div v-else-if="scrapedReferences.length > 0" class="mt-4 space-y-2 transition-all duration-300">
-                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Lectura de fuentes completada:</p>
+                    <p class="text-xs font-semibold text-secondary uppercase tracking-wider">Lectura de fuentes completada:</p>
                     <div class="flex flex-wrap gap-2">
-                      <div v-for="url in scrapedReferences" :key="url.url" class="inline-flex items-center gap-2 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                      <div v-for="url in scrapedReferences" :key="url.url" class="inline-flex items-center gap-2 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20">
                         <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
                         {{ url.title }}
                       </div>
@@ -602,11 +618,11 @@ const renderedMarkdown = computed(() => {
                 </div>
               </div>
               
-              <div class="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <div class="p-6 border-t border-secondary/10 bg-secondary/5 flex justify-end">
                 <button 
                   @click="handleProceedToArchitect" 
                   :disabled="architectLoading"
-                  class="group inline-flex items-center justify-center rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
+                  class="group inline-flex items-center justify-center rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
                 >
                   <div v-if="architectLoading" class="flex items-center gap-2">
                     <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -622,21 +638,21 @@ const renderedMarkdown = computed(() => {
 
             <!-- SIDEBAR: TARGETING -->
             <aside class="lg:col-span-1">
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 lg:sticky lg:top-24 h-full flex flex-col">
-                <div class="flex items-center gap-2 pb-4 border-b border-slate-50 shrink-0">
-                  <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 lg:sticky lg:top-24 h-full flex flex-col">
+                <div class="flex items-center gap-2 pb-4 border-b border-secondary/10 shrink-0">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                   </svg>
-                  <h3 class="font-bold text-slate-800">Preferencias</h3>
+                  <h3 class="font-bold text-text">Preferencias</h3>
                 </div>
 
                 <div class="space-y-6 pt-6">
                   <div>
-                    <label for="audience" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Público Objetivo</label>
+                    <label for="audience" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Público Objetivo</label>
                     <select
                       id="audience"
                       v-model="audience"
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm bg-slate-50/50"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
                     >
                       <option value="General">General (Todos los públicos)</option>
                       <option value="Principiantes">Principiantes / Novatos</option>
@@ -647,11 +663,11 @@ const renderedMarkdown = computed(() => {
                   </div>
 
                   <div>
-                    <label for="intent" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Intención de Búsqueda</label>
+                    <label for="intent" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Intención de Búsqueda</label>
                     <select
                       id="intent"
                       v-model="searchIntent"
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm bg-slate-50/50"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
                     >
                       <option value="Informativo">Informativo (Noticia / Saber qué)</option>
                       <option value="Tutorial">Tutorial / Guía Paso a Paso</option>
@@ -661,22 +677,22 @@ const renderedMarkdown = computed(() => {
                   </div>
                 </div>
 
-                <div class="mt-6 pt-6 border-t border-slate-100">
-                  <label for="additional-context" class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-slate-400">(Opcional)</span></label>
-                  <p class="text-xs text-slate-500 mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
+                <div class="mt-6 pt-6 border-t border-secondary/10">
+                  <label for="additional-context" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
+                  <p class="text-xs text-secondary mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
                   <textarea
                     id="additional-context"
                     v-model="additionalContext"
                     rows="4"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 text-xs resize-none transition-shadow"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary text-xs resize-none transition-shadow"
                     placeholder="Ej: Tono cercano y optimista. No mencionar requisitos de edad..."
                   ></textarea>
                 </div>
 
                 <div class="mt-auto pt-6">
-                  <div class="bg-indigo-50/50 rounded-2xl p-4 border border-indigo-100/50">
-                    <p class="text-[10px] text-slate-500 leading-relaxed font-medium">
-                      <span class="text-indigo-600 font-bold uppercase tracking-tighter mr-1">Pro Tip:</span> 
+                  <div class="bg-primary/5 rounded-2xl p-4 border border-primary/10">
+                    <p class="text-[10px] text-secondary leading-relaxed font-medium">
+                      <span class="text-primary font-bold uppercase tracking-tighter mr-1">Pro Tip:</span> 
                       Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
                     </p>
                   </div>
@@ -688,8 +704,8 @@ const renderedMarkdown = computed(() => {
         <!-- STEP 2: THE ARCHITECT -->
         <div v-else-if="currentStep === 2" class="space-y-8" key="step2">
           <div class="text-center max-w-2xl mx-auto mb-10">
-            <h1 class="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl mb-4">Diseño del Artículo</h1>
-            <p class="text-lg text-slate-500">Ajusta la estructura y configuración antes de generar el borrador.</p>
+            <h1 class="text-4xl font-extrabold tracking-tight text-text sm:text-5xl mb-4">Diseño del Artículo</h1>
+            <p class="text-lg text-secondary">Ajusta la estructura y configuración antes de generar el borrador.</p>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -698,12 +714,12 @@ const renderedMarkdown = computed(() => {
             <div class="lg:col-span-3 flex flex-col gap-6">
               
               <!-- Outline Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-slate-900/5">
-              <h2 class="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
-                <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-text/5">
+              <h2 class="text-lg font-bold text-text mb-1 flex items-center gap-2">
+                <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
                 Esquema Interactivo
               </h2>
-              <p class="text-sm text-slate-500 mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
+              <p class="text-sm text-secondary mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
               
               <ul class="space-y-3 pr-2">
                 <li v-for="(item, index) in outlineList" :key="item.id" 
@@ -712,17 +728,17 @@ const renderedMarkdown = computed(() => {
                     @dragover.prevent
                     @dragenter.prevent
                     @drop="onDrop(index)"
-                    class="group flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3 hover:border-slate-300 hover:bg-slate-50/50 transition-all cursor-move" 
-                    :class="{'opacity-50 bg-slate-50': !item.included, 'border-dashed border-slate-300 bg-slate-50 opacity-40': draggedItemIndex === index}">
+                    class="group flex items-center gap-3 bg-white border border-secondary/20 rounded-xl p-3 hover:border-secondary/30 hover:bg-secondary/5 transition-all cursor-move" 
+                    :class="{'opacity-50 bg-secondary/5': !item.included, 'border-dashed border-secondary/30 bg-secondary/5 opacity-40': draggedItemIndex === index}">
                   
                   <!-- Drag Handle -->
-                  <span class="cursor-grab text-slate-300 hover:text-slate-500 shrink-0">
+                  <span class="cursor-grab text-secondary/30 hover:text-secondary shrink-0">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" /></svg>
                   </span>
                   
                   <!-- Checkbox -->
                   <div class="flex items-center shrink-0">
-                    <input type="checkbox" v-model="item.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 cursor-pointer" />
+                    <input type="checkbox" v-model="item.included" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 cursor-pointer" />
                   </div>
 
                   <!-- Editable Input Text -->
@@ -730,15 +746,15 @@ const renderedMarkdown = computed(() => {
                     <input 
                       type="text" 
                       v-model="item.text" 
-                      class="text-sm font-semibold text-slate-800 flex-grow border-0 border-b border-transparent focus:border-indigo-600 focus:ring-0 bg-transparent px-1 py-1 transition-all" 
-                      :class="{'line-through text-slate-500': !item.included}" 
+                      class="text-sm font-semibold text-text flex-grow border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-1 transition-all" 
+                      :class="{'line-through text-secondary': !item.included}" 
                     />
                     
                     <!-- Budget Selector -->
                     <select
                       v-if="item.included"
                       v-model="item.budget"
-                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold text-slate-600 bg-slate-50 ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 cursor-pointer"
+                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold text-secondary bg-secondary/5 ring-1 ring-inset ring-secondary/20 focus:outline-none focus:ring-2 focus:ring-secondary/40 cursor-pointer"
                     >
                       <option value="short">Breve (~100 palabras)</option>
                       <option value="medium">Normal (~250 palabras)</option>
@@ -747,22 +763,22 @@ const renderedMarkdown = computed(() => {
                   </div>
                   
                   <!-- Delete Action -->
-                  <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
+                  <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
                   </button>
                 </li>
               </ul>
               
-              <div class="mt-4 flex flex-wrap justify-between pt-4 border-t border-slate-100 gap-3">
-                <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
+              <div class="mt-4 flex flex-wrap justify-between pt-4 border-t border-secondary/10 gap-3">
+                <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/10">
                   <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                   Encabezado
                 </button>
                 <div class="flex gap-2">
-                  <button @click="addFAQTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
+                  <button @click="addFAQTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/10">
                     <span>+ FAQ</span>
                   </button>
-                  <button @click="addProsConsTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors px-3 py-2 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-100">
+                  <button @click="addProsConsTemplate" class="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/10">
                     <span>+ Pros/Contras</span>
                   </button>
                 </div>
@@ -770,19 +786,19 @@ const renderedMarkdown = computed(() => {
               </div>
 
               <!-- Suggested Links Card -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-slate-900/5">
-                <h2 class="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
-                  <svg class="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-text/5">
+                <h2 class="text-lg font-bold text-text mb-1 flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                   Enlaces Sugeridos
                 </h2>
-                <p class="text-sm text-slate-500 mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
+                <p class="text-sm text-secondary mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
                 
                 <ul class="space-y-3 pr-2">
-                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3 hover:border-slate-300 hover:bg-slate-50/50 transition-all" :class="{'opacity-60 bg-slate-50': !link.included}">
+                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-secondary/20 rounded-xl p-3 hover:border-secondary/30 hover:bg-secondary/5 transition-all" :class="{'opacity-60 bg-secondary/5': !link.included}">
                     
                     <!-- Checkbox -->
                     <div class="flex items-center shrink-0 mt-0.5">
-                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 cursor-pointer" />
+                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 cursor-pointer" />
                     </div>
 
                     <!-- Link Info -->
@@ -791,20 +807,20 @@ const renderedMarkdown = computed(() => {
                         <input 
                           type="text" 
                           v-model="link.title" 
-                          class="text-sm font-semibold text-slate-800 w-full border-0 border-b border-transparent focus:border-indigo-600 focus:ring-0 bg-transparent px-1 py-0.5 transition-all" 
-                          :class="{'line-through text-slate-500': !link.included}" 
+                          class="text-sm font-semibold text-text w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all" 
+                          :class="{'line-through text-secondary': !link.included}" 
                         />
                       </div>
                       <input 
                         type="text" 
                         v-model="link.url" 
-                        class="text-xs text-slate-500 w-full border-0 border-b border-transparent focus:border-indigo-600 focus:ring-0 bg-transparent px-1 py-0.5 transition-all truncate" 
+                        class="text-xs text-secondary w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all truncate" 
                         :class="{'line-through': !link.included}" 
                       />
                     </div>
                     
                     <!-- Delete Action -->
-                    <button @click="removeLink(link.id)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
+                    <button @click="removeLink(link.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
                       <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
                     </button>
                   </li>
@@ -823,21 +839,21 @@ const renderedMarkdown = computed(() => {
             </div>
 
             <!-- Right col: Settings Config Panel -->
-            <div class="bg-white rounded-2xl shadow-lg border border-slate-200 flex flex-col lg:h-[calc(100vh-10rem)] lg:sticky lg:top-24 overflow-hidden lg:col-span-1">
-              <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2 z-10 shrink-0">
-                <svg class="h-5 w-5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                <h3 class="font-bold text-slate-800">Ajustes del Artículo</h3>
+            <div class="bg-white rounded-2xl shadow-lg border border-secondary/20 flex flex-col lg:h-[calc(100vh-10rem)] lg:sticky lg:top-24 overflow-hidden lg:col-span-1">
+              <div class="p-4 border-b border-secondary/10 bg-background flex items-center gap-2 z-10 shrink-0">
+                <svg class="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <h3 class="font-bold text-text">Ajustes del Artículo</h3>
               </div>
               
               <div class="flex-1 p-5 overflow-y-auto space-y-8">
                 
                 <!-- Keywords -->
                 <div>
-                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Etiquetas / Keywords</label>
+                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-2">Etiquetas / Keywords</label>
                   <div class="flex flex-wrap gap-2 mb-3">
-                    <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm border border-slate-200">
+                    <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-md bg-secondary/10 px-2.5 py-1 text-xs font-semibold text-text shadow-sm border border-secondary/20">
                       {{ tag }}
-                      <button @click="removeTag(tag)" class="-mr-1 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-200">
+                      <button @click="removeTag(tag)" class="-mr-1 text-secondary/40 hover:text-red-500 rounded-full hover:bg-secondary/20 transition-colors">
                          <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
                       </button>
                     </span>
@@ -846,21 +862,21 @@ const renderedMarkdown = computed(() => {
                     v-model="newTag"
                     @keydown.enter.prevent="addTag"
                     type="text"
-                    class="block w-full rounded-xl border-0 py-2.5 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-sm"
+                    class="block w-full rounded-xl border-0 py-2.5 px-3 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm"
                     placeholder="Añadir nueva y pulsar Enter..."
                   />
                 </div>
 
                 <!-- Tone Slider -->
                 <div>
-                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-3">
                     Tono: 
-                    <span class="text-indigo-600">
+                    <span class="text-primary">
                       {{ toneValue < 33 ? 'Profesional' : toneValue < 66 ? 'Cercano' : 'Viral/Audaz' }}
                     </span>
                   </label>
-                  <input type="range" v-model="toneValue" min="0" max="100" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:outline-none focus:ring-2 focus:ring-slate-400 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-600 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-indigo-600" />
-                  <div class="flex justify-between text-[10px] uppercase font-bold text-slate-400">
+                  <input type="range" v-model="toneValue" min="0" max="100" class="w-full h-2 bg-secondary/20 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
+                  <div class="flex justify-between text-[10px] uppercase font-bold text-secondary/40">
                     <span>Prof.</span>
                     <span>Cercano</span>
                     <span>Viral</span>
@@ -869,8 +885,8 @@ const renderedMarkdown = computed(() => {
 
                 <!-- Length -->
                 <div>
-                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Longitud</label>
-                  <select v-model="articleLength" class="block w-full rounded-xl border-0 py-2.5 pl-3 pr-10 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400 sm:text-sm sm:leading-6 cursor-pointer bg-white">
+                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-2">Longitud</label>
+                  <select v-model="articleLength" class="block w-full rounded-xl border-0 py-2.5 pl-3 pr-10 text-text shadow-sm ring-1 ring-inset ring-secondary/20 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm sm:leading-6 cursor-pointer bg-white">
                     <option value="short">Corto (~500 palabras)</option>
                     <option value="medium">Mediano (~1000 palabras)</option>
                     <option value="long">Largo (~2000 palabras)</option>
@@ -879,48 +895,48 @@ const renderedMarkdown = computed(() => {
 
                 <!-- Checkboxes / Toggles for tables and lists -->
                 <div class="space-y-3">
-                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Elementos Adicionales</label>
+                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-2">Elementos Adicionales</label>
                   <label class="flex items-center justify-between cursor-pointer group">
-                    <span class="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">Incluir listas (viñetas)</span>
-                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 ease-in-out cursor-pointer" />
+                    <span class="text-sm font-medium text-text group-hover:text-primary transition-colors">Incluir listas (viñetas)</span>
+                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 ease-in-out cursor-pointer" />
                   </label>
                   <label class="flex items-center justify-between cursor-pointer group">
-                    <span class="text-sm font-medium text-slate-700 group-hover:text-slate-900 transition-colors">Incluir tablas de datos</span>
-                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-slate-400 transition duration-150 ease-in-out cursor-pointer" />
+                    <span class="text-sm font-medium text-text group-hover:text-primary transition-colors">Incluir tablas de datos</span>
+                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 ease-in-out cursor-pointer" />
                   </label>
                 </div>
 
                 <!-- Media Library -->
                 <div>
-                  <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Galería de Imágenes</label>
-                  <div class="border-2 border-dashed border-slate-200 bg-slate-50 rounded-xl p-4 text-center hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer mb-4">
-                    <svg class="mx-auto h-6 w-6 text-slate-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <span class="text-xs text-indigo-600 font-semibold block">Subir o Arrastrar</span>
+                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-3">Galería de Imágenes</label>
+                  <div class="border-2 border-dashed border-secondary/20 bg-background rounded-xl p-4 text-center hover:bg-secondary/5 hover:border-secondary/30 transition-colors cursor-pointer mb-4">
+                    <svg class="mx-auto h-6 w-6 text-secondary/40 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <span class="text-xs text-primary font-semibold block">Subir o Arrastrar</span>
                   </div>
                   <div class="grid grid-cols-3 gap-3">
-                    <div class="aspect-square bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 cursor-grab hover:shadow-sm transition-shadow group relative">
-                      <svg class="w-8 h-8 text-slate-300 group-hover:text-indigo-400 transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
-                      <div class="absolute inset-0 bg-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-grab hover:shadow-sm transition-shadow group relative">
+                      <svg class="w-8 h-8 text-secondary/30 group-hover:text-primary transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
+                      <div class="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     </div>
-                    <div class="aspect-square bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden border border-slate-200 cursor-grab hover:shadow-sm transition-shadow group relative">
-                      <svg class="w-8 h-8 text-slate-300 group-hover:text-indigo-400 transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
-                      <div class="absolute inset-0 bg-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-grab hover:shadow-sm transition-shadow group relative">
+                      <svg class="w-8 h-8 text-secondary/30 group-hover:text-primary transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
+                      <div class="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     </div>
                   </div>
-                  <p class="text-[10px] text-slate-400 mt-3 text-center leading-relaxed">Arrastra estas miniaturas para incluirlas en el texto.</p>
+                  <p class="text-[10px] text-secondary/40 mt-3 text-center leading-relaxed">Arrastra estas miniaturas para incluirlas en el texto.</p>
                 </div>
 
               </div>
               
-              <div class="p-6 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-between gap-3">
-                <button @click="goNext(1)" class="inline-flex items-center justify-center rounded-xl bg-white border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
+              <div class="p-6 border-t border-secondary/10 bg-background shrink-0 flex justify-between gap-3">
+                <button @click="goNext(1)" class="inline-flex items-center justify-center rounded-xl bg-white border border-secondary/20 px-5 py-3 text-sm font-semibold text-secondary hover:bg-secondary/5 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary">
                   <svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                   Volver
                 </button>
                 <button 
                   @click="handleGenerateArticle" 
                   :disabled="generateLoading"
-                  class="group flex-1 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:opacity-75 disabled:cursor-not-allowed"
+                  class="group flex-1 inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-75 disabled:cursor-not-allowed"
                 >
                   <div v-if="generateLoading" class="flex items-center gap-2">
                     <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -940,29 +956,29 @@ const renderedMarkdown = computed(() => {
         <div v-else-if="currentStep === 3" class="space-y-6 mb-8" key="step3">
           
           <!-- Top Tool Bar -->
-          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
             
             <div class="flex items-center gap-3">
-              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400">
+              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-secondary bg-white border border-secondary/20 rounded-xl hover:bg-secondary/5 transition-colors focus:outline-none focus:ring-2 focus:ring-primary">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 Volver
               </button>
             </div>
 
             <!-- Toggle Switch -->
-            <div class="flex bg-slate-100 p-1 rounded-xl w-full max-w-xs relative isolate">
-              <button @click="viewMode = 'editor'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'editor' ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'">Editor</button>
-              <button @click="viewMode = 'demo'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'demo' ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700'">Vista Previa</button>
+            <div class="flex bg-secondary/10 p-1 rounded-xl w-full max-w-xs relative isolate">
+              <button @click="viewMode = 'editor'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'editor' ? 'text-primary' : 'text-secondary/60 hover:text-text'">Editor</button>
+              <button @click="viewMode = 'demo'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'demo' ? 'text-primary' : 'text-secondary/60 hover:text-text'">Vista Previa</button>
               <div class="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-transform duration-300 ease-out z-0" :class="viewMode === 'demo' ? 'translate-x-[100%]' : 'translate-x-0'"></div>
             </div>
 
             <!-- Actions (Version / Export) -->
             <div class="flex items-center gap-2">
-              <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400">
+              <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-secondary bg-white border border-secondary/20 rounded-xl hover:bg-secondary/5 transition-colors focus:outline-none focus:ring-2 focus:ring-primary">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Historial
               </button>
-              <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 border border-transparent rounded-xl shadow-sm hover:bg-indigo-500 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">
+              <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary border border-transparent rounded-xl shadow-sm hover:bg-primary/90 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-primary">
                 Publicar Vía API
                 <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" /><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" /></svg>
               </button>
@@ -975,18 +991,18 @@ const renderedMarkdown = computed(() => {
             <!-- Main Content Area -->
             <div class="flex-1 flex flex-col gap-6">
               <!-- EDITOR VIEW -->
-              <div v-show="viewMode === 'editor'" class="flex-1 bg-[#1e1e1e] rounded-2xl shadow-xl border border-slate-800 flex flex-col overflow-hidden animate-fade-in h-full">
-                <div class="px-4 py-2 bg-[#2d2d2d] border-b border-[#404040] flex items-center justify-between">
+              <div v-show="viewMode === 'editor'" class="flex-1 bg-[#1e1e1e] rounded-2xl shadow-xl border border-secondary/20 flex flex-col overflow-hidden animate-fade-in h-full">
+                <div class="px-4 py-2 bg-secondary/10 border-b border-secondary/20 flex items-center justify-between">
                   <div class="flex items-center gap-4">
-                    <span class="text-xs font-mono text-slate-400">borrador.md</span>
-                    <div class="h-4 w-px bg-slate-700"></div>
+                    <span class="text-xs font-mono text-secondary/60">borrador.md</span>
+                    <div class="h-4 w-px bg-secondary/20"></div>
                     <div class="flex items-center gap-2">
-                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">✨ Simplificar</button>
-                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">🚀 Viralizar</button>
-                       <button class="text-[10px] font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-slate-700">⚙️ +Técnico</button>
+                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">✨ Simplificar</button>
+                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">🚀 Viralizar</button>
+                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">⚙️ +Técnico</button>
                     </div>
                   </div>
-                  <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
+                  <span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
                     <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
                     Live Engine
                   </span>
@@ -999,43 +1015,76 @@ const renderedMarkdown = computed(() => {
               </div>
 
               <!-- DEMO VIEW -->
-              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-y-auto animate-fade-in h-full">
+              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-secondary/10 overflow-y-auto animate-fade-in h-full">
                 <div class="p-8 sm:p-12 space-y-2">
                   <div
                     v-for="(section, idx) in parsedSections"
                     :key="idx"
                     class="relative group/section pb-8 last:pb-0"
                   >
-                    <!-- Floating Re-generate button (on the right edge) -->
+                    <!-- Floating Re-generate controls (Inward from right) -->
                     <div
-                      class="absolute -right-4 top-0 opacity-0 group-hover/section:opacity-100 transition-opacity duration-200 z-20"
+                      class="absolute right-0 top-0 opacity-0 group-hover/section:opacity-100 transition-opacity duration-200 z-20 flex flex-row-reverse items-center gap-2 group/controls"
                     >
                       <button
                         @click="handleRegenerateSection(idx)"
                         :disabled="section.isRegenerating"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 bg-white border border-indigo-100 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed translate-x-full"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-primary bg-white border border-secondary/20 hover:bg-secondary/5 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                         title="Re-generar esta sección"
                       >
                         <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
                         Re-generar
                       </button>
+                      <input 
+                        v-model="regenGuidelines[idx]"
+                        type="text"
+                        placeholder="Instrucciones de ajuste..."
+                        class="w-0 opacity-0 group-hover/controls:w-48 group-hover/controls:opacity-100 px-0 group-hover/controls:px-3 py-1.5 text-xs border border-secondary/20 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none shadow-sm transition-all duration-300 overflow-hidden whitespace-nowrap bg-white/90 backdrop-blur-sm"
+                        @keydown.enter="handleRegenerateSection(idx)"
+                      />
                     </div>
 
-                    <!-- Section Heading -->
-                    <h2 v-if="section.heading" class="text-2xl font-extrabold text-slate-900 mb-3 tracking-tight">
-                      {{ section.headingText }}
-                    </h2>
-                    <div v-else-if="idx === 0" class="text-xs font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <span class="h-px bg-slate-100 flex-grow"></span>
-                       Introducción
-                       <span class="h-px bg-slate-100 flex-grow"></span>
-                    </div>
+                    <!-- Section Heading & Labels -->
+                    <template v-if="idx === 0">
+                      <div v-if="section.h1Html">
+                        <div class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+                           <span class="h-px bg-secondary/10 flex-grow"></span>
+                           Título
+                           <span class="h-px bg-secondary/10 flex-grow"></span>
+                        </div>
+                        <div v-html="section.h1Html" class="prose prose-slate prose-indigo max-w-none mb-6"></div>
+                      </div>
+                      
+                      <div class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                         Introducción
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                      </div>
+                    </template>
+
+                    <template v-else>
+                      <div v-if="idx === 1" class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                         Desarrollo
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                      </div>
+                      
+                      <div v-if="idx === parsedSections.length - 1 && parsedSections.length > 2" class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                         Conclusión
+                         <span class="h-px bg-secondary/10 flex-grow"></span>
+                      </div>
+
+                      <h2 v-if="section.heading" class="text-2xl font-extrabold text-text mb-3 tracking-tight">
+                        {{ section.headingText }}
+                      </h2>
+                    </template>
 
                     <!-- Section Body -->
                     <div class="relative">
                       <!-- Loading overlay -->
                       <div v-if="section.isRegenerating" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl z-10">
-                        <div class="flex items-center gap-3 text-indigo-600">
+                        <div class="flex items-center gap-3 text-primary">
                           <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                           <span class="text-sm font-semibold">Regenerando sección...</span>
                         </div>
@@ -1057,40 +1106,40 @@ const renderedMarkdown = computed(() => {
             <div class="w-full lg:w-80 flex flex-col gap-6 shrink-0 h-full overflow-y-auto pr-1">
               
               <!-- Google Snippet Simulator -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-                  <svg class="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                  <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Vista previa Google</h3>
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden">
+                <div class="p-4 border-b border-secondary/10 bg-background flex items-center gap-2">
+                  <svg class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Vista previa Google</h3>
                 </div>
                 <div class="p-5 font-sans space-y-1">
-                  <div class="text-[14px] text-slate-600 line-clamp-1">https://tusitio.es › noticias</div>
-                  <div class="text-[20px] text-[#1a0dab] hover:underline cursor-pointer leading-tight line-clamp-2">{{ googleTitle }}</div>
-                  <div class="text-[14px] text-[#4d5156] leading-relaxed line-clamp-3">
-                    <span class="text-slate-500">hace 2 horas — </span>{{ googleSnippet }}
+                  <div class="text-[14px] text-secondary/60 line-clamp-1">https://tusitio.es › noticias</div>
+                  <div class="text-[20px] text-primary hover:underline cursor-pointer leading-tight line-clamp-2">{{ googleTitle }}</div>
+                  <div class="text-[14px] text-text/80 leading-relaxed line-clamp-3">
+                    <span class="text-secondary/60">hace 2 horas — </span>{{ googleSnippet }}
                   </div>
                 </div>
               </div>
 
               <!-- SEO Verification Checklist -->
-              <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1">
-                <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                  <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Verificación SEO</h3>
-                  <span class="text-xs font-bold text-indigo-600">{{ seoScore }}%</span>
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden flex-1">
+                <div class="p-4 border-b border-secondary/10 bg-background flex items-center justify-between">
+                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Verificación SEO</h3>
+                  <span class="text-xs font-bold text-primary">{{ seoScore }}%</span>
                 </div>
                 <div class="p-5 space-y-4">
                   <div v-for="item in seoAnalysis" :key="item.label" class="flex items-start gap-3">
                     <div class="mt-0.5 shrink-0">
-                      <svg v-if="item.value" class="h-5 w-5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                      <svg v-else class="h-5 w-5 text-slate-300" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+                      <svg v-if="item.value" class="h-5 w-5 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                      <svg v-else class="h-5 w-5 text-secondary/30" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
                     </div>
-                    <span class="text-xs font-medium" :class="item.value ? 'text-slate-800' : 'text-slate-400'">{{ item.label }}</span>
+                    <span class="text-xs font-medium" :class="item.value ? 'text-text' : 'text-secondary/40'">{{ item.label }}</span>
                   </div>
                   
                   <!-- Smart Tips -->
-                  <div class="mt-6 pt-6 border-t border-slate-100">
-                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Consejo de IA</div>
-                    <div class="bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-                      <p class="text-[11px] text-indigo-700 leading-relaxed font-medium">
+                  <div class="mt-6 pt-6 border-t border-secondary/10">
+                    <div class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest mb-3">Consejo de IA</div>
+                    <div class="bg-primary/5 rounded-xl p-3 border border-primary/10">
+                      <p class="text-[11px] text-primary/80 leading-relaxed font-medium">
                         {{ seoScore < 90 ? 'Añade más palabras clave secundarias para mejorar la autoridad temática.' : '¡Excelente trabajo! El artículo cumple con todos los estándares SEO recomendados.' }}
                       </p>
                     </div>
@@ -1108,11 +1157,57 @@ const renderedMarkdown = computed(() => {
 </template>
 
 <style scoped>
+@reference "../../../assets/main.css";
+
 .animate-fade-in {
   animation: fadeIn 0.4s ease-out forwards;
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Custom TOC Styles */
+:deep(details) {
+  @apply bg-background border border-secondary/20 rounded-xl my-6 overflow-hidden transition-all duration-300;
+}
+
+:deep(summary) {
+  @apply px-5 py-3 cursor-pointer font-bold text-text bg-secondary/5 hover:bg-secondary/10 transition-colors list-none flex items-center gap-2;
+}
+
+:deep(summary::-webkit-details-marker) {
+  display: none;
+}
+
+:deep(summary::before) {
+  content: '→';
+  @apply text-primary transition-transform duration-300 font-mono;
+}
+
+:deep(details[open] summary::before) {
+  @apply rotate-90;
+}
+
+:deep(details > ul) {
+  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10;
+}
+
+:deep(details > ul li a) {
+  @apply text-primary hover:text-primary/80 no-underline transition-colors block text-sm font-medium;
+}
+
+/* Table Responsive Fix */
+:deep(.prose table) {
+  @apply block w-full overflow-x-auto border-collapse;
+  -webkit-overflow-scrolling: touch;
+}
+
+:deep(.prose thead) {
+  @apply bg-secondary/5;
+}
+
+:deep(.prose th), :deep(.prose td) {
+  @apply border border-secondary/10 px-4 py-2 min-w-[120px];
 }
 </style>

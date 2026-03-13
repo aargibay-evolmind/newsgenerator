@@ -8,7 +8,7 @@ class RegenerateSectionService
         private readonly GeminiService $gemini
     ) {}
 
-    public function regenerate(string $articleTitle, string $sectionHeading, string $currentContent, string $context = ''): string
+    public function regenerate(string $articleTitle, string $sectionHeading, string $currentContent, string $context = '', string $guidelines = ''): string
     {
         $prompt = sprintf(
             "Eres un redactor experto. Dentro del artículo titulado \"%s\", tienes que reescribir únicamente la sección \"%s\".\n\n",
@@ -19,8 +19,8 @@ class RegenerateSectionService
         $prompt .= "El contenido actual de esa sección es:\n\n";
         $prompt .= "---\n" . $currentContent . "\n---\n\n";
 
-        if (!empty(trim($context))) {
-            $prompt .= sprintf("Directrices adicionales del redactor: %s\n\n", $context);
+        if (!empty(trim($guidelines))) {
+            $prompt .= sprintf("**INSTRUCCIÓN DE AJUSTE ESPECÍFICA (Prioridad alta):** %s\n\n", $guidelines);
         }
 
         $prompt .= "Instrucciones:\n";

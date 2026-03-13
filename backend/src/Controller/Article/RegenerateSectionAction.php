@@ -28,13 +28,14 @@ class RegenerateSectionAction
         $sectionHeading  = $payload['sectionHeading'] ?? '';
         $currentContent  = $payload['currentContent'] ?? '';
         $context         = $payload['context'] ?? '';
+        $guidelines      = $payload['guidelines'] ?? '';
 
         if (empty(trim($sectionHeading))) {
             return $this->responder->respondError('sectionHeading parameter is required.', 400);
         }
 
         try {
-            $newContent = $this->domainService->regenerate($articleTitle, $sectionHeading, $currentContent, $context);
+            $newContent = $this->domainService->regenerate($articleTitle, $sectionHeading, $currentContent, $context, $guidelines);
             return $this->responder->respond(['content' => $newContent]);
         } catch (\Exception $e) {
             return $this->responder->respondError($e->getMessage(), 500);
