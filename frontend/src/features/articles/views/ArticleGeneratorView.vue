@@ -27,7 +27,8 @@ const {
   includeLists,
   includeTables,
   outlineList,
-  suggestedLinks
+  suggestedLinks,
+  uploadedImages
 } = storeToRefs(store)
 const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSuggestTopics()
 const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
@@ -162,6 +163,7 @@ function removeTag(tag: string) {
 // Step 3: View & Editor
 const viewMode = ref<'editor' | 'demo'>('demo')
 const showVersionHistory = ref(false)
+const showSeoDetails = ref(false)
 const regenGuidelines = ref<Record<number, string>>({})
 
 /**
@@ -336,7 +338,14 @@ async function handleGenerateArticle() {
 
 const generatedMarkdown = ref(fakeArticle)
 
-// Parse markdown into sections split by ## headings
+// Parse markdown into granular blocks for interactive preview
+interface MarkdownBlock {
+  id: string
+  type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'image' | 'list' | 'other'
+  content: string
+  html: string
+}
+
 interface ParsedSection {
   heading: string      // e.g. "## 1. Requisitos Básicos"
   headingText: string  // e.g. "1. Requisitos Básicos"
@@ -378,12 +387,148 @@ const parsedSections = computed<ParsedSection[]>(() => {
         heading,
         headingText,
         content,
-        html: DOMPurify.sanitize(rawHtml),
+        html: DOMPurify.sanitize(rawHtml, {
+          ADD_ATTR: ['src'],
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+        }).replace(/<details>/g, '<details open>'),
         isRegenerating: _sectionRegen.value[idx] ?? false,
         h1Html
       }
     })
 })
+
+const articleBlocks = computed<MarkdownBlock[]>(() => {
+  const md = generatedMarkdown.value
+  if (!md) return []
+
+  // Split into blocks. We want to identify:
+  // - H1 (# ...)
+  // - H2 (## ...)
+  // - H3 (### ...)
+  // - Images (![...](...))
+  // - Lists (Starting with - or * or digit.)
+  // - Paragraphs (everything else)
+  
+  // First, let's normalize line endings
+  const normalized = md.replace(/\r\n/g, '\n')
+  
+  // We'll split by double newline as a starting point, but we need to be careful with lists and headers
+  // A better way is to split while preserving markers
+  const blocks: MarkdownBlock[] = []
+  
+  // regex that matches:
+  // 1. Headings: ^#{1,3}\s+.+$
+  // 2. Images: ^!\[.*?\]\(.*?\)$
+  // 3. Everything else (paragraphs, lists)
+  
+  // We will split by lines and group them
+  const lines = normalized.split('\n')
+  let currentParagraphLines: string[] = []
+
+  const flushParagraph = () => {
+    if (currentParagraphLines.length > 0) {
+      const content = currentParagraphLines.join('\n').trim()
+      if (content) {
+        blocks.push({
+          id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
+          type: content.startsWith('- ') || content.startsWith('* ') || /^\d+\.\s/.test(content) ? 'list' : 'paragraph',
+          content,
+          html: DOMPurify.sanitize(marked.parse(content) as string, {
+            ADD_ATTR: ['src'],
+            ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+          }).replace(/<details>/g, '<details open>')
+        })
+      }
+      currentParagraphLines = []
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i] || ''
+    const line = rawLine.trim()
+    
+    if (line.startsWith('# ')) {
+      flushParagraph()
+      blocks.push({
+        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
+        type: 'h1',
+        content: line,
+        html: DOMPurify.sanitize(marked.parse(line) as string)
+      })
+    } else if (line.startsWith('## ')) {
+      flushParagraph()
+      blocks.push({
+        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
+        type: 'h2',
+        content: line,
+        html: DOMPurify.sanitize(marked.parse(line) as string)
+      })
+    } else if (line.startsWith('### ')) {
+      flushParagraph()
+      blocks.push({
+        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
+        type: 'h3',
+        content: line,
+        html: DOMPurify.sanitize(marked.parse(line) as string, {
+          ADD_ATTR: ['src'],
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+        })
+      })
+    } else if (/^!\[.*?\]\(.*?\)$/.test(line)) {
+      flushParagraph()
+      blocks.push({
+        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
+        type: 'image',
+        content: line,
+        html: DOMPurify.sanitize(marked.parse(line) as string, {
+          ADD_ATTR: ['src'],
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+        })
+      })
+    } else if (line === '') {
+      flushParagraph()
+    } else {
+      currentParagraphLines.push(lines[i] as string)
+    }
+  }
+  flushParagraph()
+
+  return blocks
+})
+
+const draggedBlockIndex = ref<number | null>(null)
+
+function onBlockDragStart(index: number) {
+  draggedBlockIndex.value = index
+}
+
+function onBlockDrop(event: DragEvent, index: number) {
+  if (draggedBlockIndex.value !== null) {
+    const blocks = [...articleBlocks.value]
+    const [removed] = blocks.splice(draggedBlockIndex.value, 1)
+    if (removed) {
+      blocks.splice(index, 0, removed)
+      // Update generatedMarkdown by joining block contents
+      generatedMarkdown.value = blocks.map(b => b.content).join('\n\n')
+    }
+    draggedBlockIndex.value = null
+  } else {
+    // Check for gallery image drop
+    const data = event.dataTransfer?.getData('text/plain')
+    if (data && data.startsWith('![')) {
+      const blocks = [...articleBlocks.value]
+      const newContents = blocks.map(b => b.content)
+      newContents.splice(index, 0, data)
+      generatedMarkdown.value = newContents.join('\n\n')
+    }
+  }
+}
+
+function removeBlock(index: number) {
+  const blocks = [...articleBlocks.value]
+  blocks.splice(index, 1)
+  generatedMarkdown.value = blocks.map(b => b.content).join('\n\n')
+}
 
 function replaceSectionContent(sectionIdx: number, newContent: string) {
   const sections = parsedSections.value
@@ -422,9 +567,71 @@ async function handleRegenerateSection(sectionIdx: number) {
 
 const renderedMarkdown = computed(() => {
   const rawHtml = marked.parse(generatedMarkdown.value) as string
-  return DOMPurify.sanitize(rawHtml)
+  return DOMPurify.sanitize(rawHtml).replace(/<details>/g, '<details open>')
 })
 
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function triggerImageUpload() {
+  fileInput.value?.click()
+}
+
+async function handleImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files || input.files.length === 0) return
+
+  Array.from(input.files).forEach(file => {
+    processImageFile(file)
+  })
+  
+  input.value = ''
+}
+
+function handleFileDrop(event: DragEvent) {
+  event.preventDefault()
+  if (event.dataTransfer?.files) {
+    Array.from(event.dataTransfer.files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        processImageFile(file)
+      }
+    })
+  }
+}
+
+function processImageFile(file: File) {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const data = e.target?.result as string
+    uploadedImages.value.push({
+      id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: file.name,
+      data
+    })
+  }
+  reader.readAsDataURL(file)
+}
+
+function deleteImage(id: string) {
+  uploadedImages.value = uploadedImages.value.filter(img => img.id !== id)
+}
+
+function insertImage(img: { name: string, data: string }) {
+  const markdown = `\n![${img.name}](${img.data})\n`
+  generatedMarkdown.value += markdown
+}
+
+function onImageDragStart(event: DragEvent, img: { name: string, data: string }) {
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', `![${img.name}](${img.data})`)
+    event.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+function onEditorDrop(event: DragEvent) {
+  // If it's a drag from our gallery, the data is already set in onDragStart
+  // If it's a file from outside, we could handle it too, but let's keep it simple
+  // The default behavior for text/plain data is to insert it at the cursor which is what we want
+}
 
 </script>
 
@@ -654,11 +861,11 @@ const renderedMarkdown = computed(() => {
                       v-model="audience"
                       class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
                     >
-                      <option value="General">General (Todos los públicos)</option>
-                      <option value="Principiantes">Principiantes / Novatos</option>
-                      <option value="Expertos">Expertos / Profesionales</option>
-                      <option value="Estudiantes">Estudiantes / Académico</option>
-                      <option value="Técnico">Perfil Técnico / Desarrolladores</option>
+                      <option value="General">General</option>
+                      <option value="Principiantes">Principiantes</option>
+                      <option value="Expertos">Profesionales</option>
+                      <option value="Estudiantes">Académico</option>
+                      <option value="Técnico">Perfil Técnico</option>
                     </select>
                   </div>
 
@@ -669,10 +876,10 @@ const renderedMarkdown = computed(() => {
                       v-model="searchIntent"
                       class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
                     >
-                      <option value="Informativo">Informativo (Noticia / Saber qué)</option>
-                      <option value="Tutorial">Tutorial / Guía Paso a Paso</option>
-                      <option value="Transaccional">Transaccional (Venta / Trámite)</option>
-                      <option value="Comparativo">Comparativo (Cual es mejor)</option>
+                      <option value="Informativo">Informativo</option>
+                      <option value="Tutorial">Tutorial</option>
+                      <option value="Transaccional">Transaccional</option>
+                      <option value="Comparativo">Comparativo</option>
                     </select>
                   </div>
                 </div>
@@ -906,25 +1113,6 @@ const renderedMarkdown = computed(() => {
                   </label>
                 </div>
 
-                <!-- Media Library -->
-                <div>
-                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-3">Galería de Imágenes</label>
-                  <div class="border-2 border-dashed border-secondary/20 bg-background rounded-xl p-4 text-center hover:bg-secondary/5 hover:border-secondary/30 transition-colors cursor-pointer mb-4">
-                    <svg class="mx-auto h-6 w-6 text-secondary/40 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <span class="text-xs text-primary font-semibold block">Subir o Arrastrar</span>
-                  </div>
-                  <div class="grid grid-cols-3 gap-3">
-                    <div class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-grab hover:shadow-sm transition-shadow group relative">
-                      <svg class="w-8 h-8 text-secondary/30 group-hover:text-primary transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
-                      <div class="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    </div>
-                    <div class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-grab hover:shadow-sm transition-shadow group relative">
-                      <svg class="w-8 h-8 text-secondary/30 group-hover:text-primary transition-colors" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
-                      <div class="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    </div>
-                  </div>
-                  <p class="text-[10px] text-secondary/40 mt-3 text-center leading-relaxed">Arrastra estas miniaturas para incluirlas en el texto.</p>
-                </div>
 
               </div>
               
@@ -997,9 +1185,6 @@ const renderedMarkdown = computed(() => {
                     <span class="text-xs font-mono text-secondary/60">borrador.md</span>
                     <div class="h-4 w-px bg-secondary/20"></div>
                     <div class="flex items-center gap-2">
-                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">✨ Simplificar</button>
-                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">🚀 Viralizar</button>
-                       <button class="text-[10px] font-bold text-secondary/60 hover:text-text transition-colors uppercase tracking-widest px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-secondary/20">⚙️ +Técnico</button>
                     </div>
                   </div>
                   <span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
@@ -1008,95 +1193,52 @@ const renderedMarkdown = computed(() => {
                   </span>
                 </div>
                 <textarea
-                  class="flex-1 w-full h-full bg-transparent text-[#d4d4d4] font-mono text-sm p-6 resize-none outline-none leading-relaxed"
-                  spellcheck="false"
                   v-model="generatedMarkdown"
+                  @dragover.prevent
+                  @drop="onEditorDrop"
+                  class="w-full h-[600px] p-6 text-sm font-mono border-0 focus:ring-0 resize-none bg-slate-50 text-slate-800"
+                  placeholder="Escribe tu artículo aquí..."
                 ></textarea>
               </div>
 
               <!-- DEMO VIEW -->
               <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-secondary/10 overflow-y-auto animate-fade-in h-full">
-                <div class="p-8 sm:p-12 space-y-2">
+                <div class="p-8 sm:p-12 space-y-4">
                   <div
-                    v-for="(section, idx) in parsedSections"
-                    :key="idx"
-                    class="relative group/section pb-8 last:pb-0"
+                    v-for="(block, bIdx) in articleBlocks"
+                    :key="block.id"
+                    draggable="true"
+                    @dragstart="onBlockDragStart(bIdx)"
+                    @dragover.prevent
+                    @drop="onBlockDrop($event, bIdx)"
+                    class="relative group/block transition-all duration-200 rounded-xl"
+                    :class="[
+                      draggedBlockIndex === bIdx ? 'opacity-20' : 'opacity-100',
+                      block.type === 'image' ? 'cursor-move ring-2 ring-transparent hover:ring-primary/30 p-1' : 'cursor-default'
+                    ]"
                   >
-                    <!-- Floating Re-generate controls (Inward from right) -->
-                    <div
-                      class="absolute right-0 top-0 opacity-0 group-hover/section:opacity-100 transition-opacity duration-200 z-20 flex flex-row-reverse items-center gap-2 group/controls"
+                    <!-- Visual drag handle for images (always visible on hover) -->
+                    <div v-if="block.type === 'image'" class="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-opacity p-2 cursor-move text-secondary/40 hover:text-primary">
+                      <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    </div>
+
+                    <!-- Delete button for images in preview -->
+                    <button 
+                      v-if="block.type === 'image'"
+                      @click="removeBlock(bIdx)"
+                      class="absolute -right-2 -top-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover/block:opacity-100 transition-opacity hover:bg-red-600 shadow-md z-10"
+                      title="Eliminar del preview"
                     >
-                      <button
-                        @click="handleRegenerateSection(idx)"
-                        :disabled="section.isRegenerating"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-primary bg-white border border-secondary/20 hover:bg-secondary/5 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                        title="Re-generar esta sección"
-                      >
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /></svg>
-                        Re-generar
-                      </button>
-                      <input 
-                        v-model="regenGuidelines[idx]"
-                        type="text"
-                        placeholder="Instrucciones de ajuste..."
-                        class="w-0 opacity-0 group-hover/controls:w-48 group-hover/controls:opacity-100 px-0 group-hover/controls:px-3 py-1.5 text-xs border border-secondary/20 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none shadow-sm transition-all duration-300 overflow-hidden whitespace-nowrap bg-white/90 backdrop-blur-sm"
-                        @keydown.enter="handleRegenerateSection(idx)"
-                      />
-                    </div>
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
 
-                    <!-- Section Heading & Labels -->
-                    <template v-if="idx === 0">
-                      <div v-if="section.h1Html">
-                        <div class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                           <span class="h-px bg-secondary/10 flex-grow"></span>
-                           Título
-                           <span class="h-px bg-secondary/10 flex-grow"></span>
-                        </div>
-                        <div v-html="section.h1Html" class="prose prose-slate prose-indigo max-w-none mb-6"></div>
-                      </div>
-                      
-                      <div class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                         Introducción
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                      </div>
-                    </template>
-
-                    <template v-else>
-                      <div v-if="idx === 1" class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                         Desarrollo
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                      </div>
-                      
-                      <div v-if="idx === parsedSections.length - 1 && parsedSections.length > 2" class="text-xs font-bold text-secondary/30 uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                         Conclusión
-                         <span class="h-px bg-secondary/10 flex-grow"></span>
-                      </div>
-
-                      <h2 v-if="section.heading" class="text-2xl font-extrabold text-text mb-3 tracking-tight">
-                        {{ section.headingText }}
-                      </h2>
-                    </template>
-
-                    <!-- Section Body -->
-                    <div class="relative">
-                      <!-- Loading overlay -->
-                      <div v-if="section.isRegenerating" class="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl z-10">
-                        <div class="flex items-center gap-3 text-primary">
-                          <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          <span class="text-sm font-semibold">Regenerando sección...</span>
-                        </div>
-                      </div>
-
-                      <!-- Body content -->
-                      <div
-                        v-html="section.html"
-                        class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl"
-                        :class="{ 'opacity-30 pointer-events-none': section.isRegenerating }"
-                      ></div>
-                    </div>
+                    <div 
+                      v-html="block.html" 
+                      class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl shadow-none"
+                    ></div>
+                    
+                    <!-- Drop indicator after block -->
+                    <div v-if="draggedBlockIndex !== null && draggedBlockIndex !== bIdx" class="h-1 w-full bg-primary/10 rounded-full mt-2 opacity-0 hover:opacity-100 transition-opacity"></div>
                   </div>
                 </div>
               </div>
@@ -1121,29 +1263,101 @@ const renderedMarkdown = computed(() => {
               </div>
 
               <!-- SEO Verification Checklist -->
-              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden flex-1">
-                <div class="p-4 border-b border-secondary/10 bg-background flex items-center justify-between">
-                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Verificación SEO</h3>
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden shrink-0">
+                <button 
+                  @click="showSeoDetails = !showSeoDetails"
+                  class="w-full p-4 border-b border-secondary/10 bg-background flex items-center justify-between hover:bg-secondary/5 transition-colors group/seo"
+                >
+                  <div class="flex items-center gap-2">
+                    <h3 class="text-xs font-bold text-secondary uppercase tracking-widest group-hover/seo:text-primary transition-colors">Verificación SEO</h3>
+                    <svg 
+                      class="h-4 w-4 text-secondary/40 group-hover/seo:text-primary transition-all duration-300"
+                      :class="{ 'rotate-180': showSeoDetails }"
+                      viewBox="0 0 20 20" 
+                      fill="currentColor"
+                    >
+                      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                    </svg>
+                  </div>
                   <span class="text-xs font-bold text-primary">{{ seoScore }}%</span>
-                </div>
-                <div class="p-5 space-y-4">
-                  <div v-for="item in seoAnalysis" :key="item.label" class="flex items-start gap-3">
-                    <div class="mt-0.5 shrink-0">
-                      <svg v-if="item.value" class="h-5 w-5 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                      <svg v-else class="h-5 w-5 text-secondary/30" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+                </button>
+                
+                <transition
+                  enter-active-class="transition duration-300 ease-out"
+                  enter-from-class="transform -translate-y-2 opacity-0"
+                  enter-to-class="transform translate-y-0 opacity-100"
+                  leave-active-class="transition duration-200 ease-in"
+                  leave-from-class="transform translate-y-0 opacity-100"
+                  leave-to-class="transform -translate-y-2 opacity-0"
+                >
+                  <div v-if="showSeoDetails" class="p-5 space-y-4">
+                    <div v-for="item in seoAnalysis" :key="item.label" class="flex items-start gap-3">
+                      <div class="mt-0.5 shrink-0">
+                        <svg v-if="item.value" class="h-5 w-5 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                        <svg v-else class="h-5 w-5 text-secondary/30" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
+                      </div>
+                      <span class="text-xs font-medium" :class="item.value ? 'text-text' : 'text-secondary/40'">{{ item.label }}</span>
                     </div>
-                    <span class="text-xs font-medium" :class="item.value ? 'text-text' : 'text-secondary/40'">{{ item.label }}</span>
+                    
+                    <!-- Smart Tips -->
+                    <div class="mt-6 pt-6 border-t border-secondary/10">
+                      <div class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest mb-3">Consejo de IA</div>
+                      <div class="bg-primary/5 rounded-xl p-3 border border-primary/10">
+                        <p class="text-[11px] text-primary/80 leading-relaxed font-medium">
+                          {{ seoScore < 90 ? 'Añade más palabras clave secundarias para mejorar la autoridad temática.' : '¡Excelente trabajo! El artículo cumple con todos los estándares SEO recomendados.' }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
+              </div>
+              
+              <!-- Media Library (Same as step 2 for consistency) -->
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden flex flex-col min-h-[300px]">
+                <div class="p-4 border-b border-secondary/10 bg-background flex items-center gap-2 shrink-0">
+                  <svg class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Galería de Imágenes</h3>
+                </div>
+                
+                <div class="p-5 flex-1 overflow-y-auto">
+                  <div 
+                    @click="triggerImageUpload"
+                    @dragover.prevent
+                    @drop="handleFileDrop"
+                    class="border-2 border-dashed border-secondary/20 bg-background rounded-xl p-4 text-center hover:bg-secondary/5 hover:border-secondary/30 transition-colors cursor-pointer mb-4"
+                  >
+                    <svg class="mx-auto h-6 w-6 text-secondary/40 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                    <span class="text-[10px] text-primary font-bold block uppercase tracking-tight">Subir o Arrastrar</span>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3" v-if="uploadedImages.length > 0">
+                    <div 
+                      v-for="img in uploadedImages" 
+                      :key="img.id"
+                      draggable="true"
+                      @dragstart="onImageDragStart($event, img)"
+                      class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-pointer hover:shadow-md transition-all group relative"
+                      :title="'Insertar/Arrastrar ' + img.name"
+                    >
+                      <img :src="img.data" @click="insertImage(img)" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                      <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                      </div>
+                      <button 
+                        @click.stop="deleteImage(img.id)"
+                        class="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm z-10"
+                        title="Eliminar imagen"
+                      >
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
                   
-                  <!-- Smart Tips -->
-                  <div class="mt-6 pt-6 border-t border-secondary/10">
-                    <div class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest mb-3">Consejo de IA</div>
-                    <div class="bg-primary/5 rounded-xl p-3 border border-primary/10">
-                      <p class="text-[11px] text-primary/80 leading-relaxed font-medium">
-                        {{ seoScore < 90 ? 'Añade más palabras clave secundarias para mejorar la autoridad temática.' : '¡Excelente trabajo! El artículo cumple con todos los estándares SEO recomendados.' }}
-                      </p>
-                    </div>
+                  <div class="text-center py-8" v-else>
+                    <svg class="mx-auto h-8 w-8 text-secondary/20 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <p class="text-[10px] text-secondary/40 font-bold uppercase">Sin imágenes</p>
                   </div>
+                  <p class="text-[9px] text-secondary/40 mt-4 text-center leading-relaxed">Arrastra miniaturas al preview para moverlas.</p>
                 </div>
               </div>
 

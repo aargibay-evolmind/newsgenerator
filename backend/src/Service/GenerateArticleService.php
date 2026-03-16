@@ -41,7 +41,7 @@ class GenerateArticleService
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
         $prompt .= "\n**Instrucción de Navegación (CRÍTICO):**\n";
-        $prompt .= "- Después de la introducción, incluye una 'Tabla de contenidos' colapsable usando las etiquetas HTML `<details>` y `<summary>`. No añadas un encabezado Markdown (# o ##) para esta tabla, usa la etiqueta `<summary>` con el texto 'Tabla de contenidos'.\n";
+        $prompt .= "- Después de la introducción, incluye una 'Tabla de contenidos' colapsable usando las etiquetas HTML `<details open>` y `<summary>`. No añadas un encabezado Markdown (# o ##) para esta tabla, usa la etiqueta `<summary>` con el texto 'Tabla de contenidos'.\n";
         $prompt .= "- Dentro del `<details>`, crea una lista Markdown de enlaces internos a todos los encabezados H2 del artículo (ej: `[Título de la sección](#titulo-de-la-sección)`).\n";
 
         if (!empty(trim($additionalContext))) {

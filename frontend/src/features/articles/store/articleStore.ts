@@ -23,6 +23,7 @@ export const useArticleStore = defineStore('article', () => {
   // Step 2 State (Plan)
   const outlineList = ref<OutlineItem[]>([]);
   const suggestedLinks = ref<ReferenceLink[]>([]);
+  const uploadedImages = ref<{id: string, name: string, data: string}[]>([]);
 
   // Actions to conveniently get payload data
   function getGenerateOutlinePayload() {
@@ -68,6 +69,7 @@ export const useArticleStore = defineStore('article', () => {
     includeTables,
     outlineList,
     suggestedLinks,
+    uploadedImages,
     // Actions
     getGenerateOutlinePayload,
     getGenerateArticlePayload
