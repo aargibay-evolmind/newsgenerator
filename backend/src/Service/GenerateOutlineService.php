@@ -10,13 +10,15 @@ class GenerateOutlineService
 
     /**
      * @param string $title
+     * @param array<string> $keyPoints
      * @param array<string> $keywords
      * @param array<string> $urls
      * @param string $audience
      * @param string $searchIntent
+     * @param string $additionalContext
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = ''): array
+    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = ''): array
     {
         $prompt = sprintf(
             "Actúa como el Arquitecto Jefe de contenido para un blog de noticias de alta retención. Vas a diseñar el esquema para un artículo titulado: '%s'.\n",
@@ -31,7 +33,11 @@ class GenerateOutlineService
         }
 
         if (!empty($keywords)) {
-            $prompt .= sprintf("Debes asegurarte de cubrir obligatoriamente los siguientes Puntos Clave: %s.\n", implode(', ', $keywords));
+            $prompt .= sprintf("**Etiquetas / Keywords (SEO y Categorización):** %s.\n", implode(', ', $keywords));
+        }
+        
+        if (!empty($keyPoints)) {
+            $prompt .= sprintf("Debes asegurarte de cubrir obligatoriamente los siguientes Puntos Clave como parte del esquema: %s.\n", implode(', ', $keyPoints));
         }
 
         $prompt .= "

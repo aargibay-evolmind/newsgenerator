@@ -6,6 +6,7 @@ export const useArticleStore = defineStore('article', () => {
   // Step 1 State
   const blogTitle = ref('');
   const keywords = ref<string[]>([]);
+  const keyPoints = ref<string[]>([]);
   const referenceUrls = ref<string[]>([]);
   const scrapedReferences = ref<{url: string, title: string}[]>([]);
   const additionalContext = ref('');
@@ -15,7 +16,7 @@ export const useArticleStore = defineStore('article', () => {
   const searchIntent = ref('Informativo');
 
   // Step 2 State (Config)
-  const toneValue = ref(50);
+  const toneValue = ref(0);
   const articleLength = ref('medium');
   const includeLists = ref(true);
   const includeTables = ref(false);
@@ -30,6 +31,7 @@ export const useArticleStore = defineStore('article', () => {
     return {
       title: blogTitle.value,
       keywords: keywords.value,
+      keyPoints: keyPoints.value,
       audience: audience.value,
       searchIntent: searchIntent.value,
       additionalContext: additionalContext.value,
@@ -41,6 +43,7 @@ export const useArticleStore = defineStore('article', () => {
     return {
       title: blogTitle.value,
       keywords: keywords.value,
+      keyPoints: keyPoints.value,
       audience: audience.value,
       searchIntent: searchIntent.value,
       additionalContext: additionalContext.value,
@@ -58,6 +61,7 @@ export const useArticleStore = defineStore('article', () => {
     // State
     blogTitle,
     keywords,
+    keyPoints,
     referenceUrls,
     scrapedReferences,
     additionalContext,

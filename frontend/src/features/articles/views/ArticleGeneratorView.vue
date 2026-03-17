@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useArticleStore } from '../../articles/store/articleStore'
 import { 
@@ -11,12 +11,14 @@ import {
 } from '../../articles/composables'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 // Store and API hooks
 const store = useArticleStore()
 const {
   blogTitle,
   keywords: tags,
+  keyPoints,
   referenceUrls,
   scrapedReferences,
   additionalContext,
@@ -80,6 +82,13 @@ async function handleScrape() {
     }
   }
 }
+function removeScrapedLink(url: string) {
+  scrapedReferences.value = scrapedReferences.value.filter((r: any) => r.url !== url)
+}
+
+function removeUrlFallback(url: string) {
+  referenceUrls.value = referenceUrls.value.filter((u: string) => u !== url)
+}
 
 function goNext(step: number) {
   currentStep.value = step
@@ -109,6 +118,17 @@ function addProsConsTemplate() {
   outlineList.value.push({ id: lastId + 1, text: 'Ventajas y Desventajas', included: true, budget: 'medium' })
   outlineList.value.push({ id: lastId + 2, text: 'Puntos Fuertes (Pros)', included: true, budget: 'medium' })
   outlineList.value.push({ id: lastId + 3, text: 'Puntos Débiles (Contras)', included: true, budget: 'medium' })
+}
+
+const allOutlineIncluded = computed(() => {
+  return outlineList.value.length > 0 && outlineList.value.every((i: any) => i.included)
+})
+
+function toggleAllOutline() {
+  const targetValue = !allOutlineIncluded.value
+  outlineList.value.forEach((item: any) => {
+    item.included = targetValue
+  })
 }
 
 function onDragStart(index: number) {
@@ -148,6 +168,7 @@ function addLink() {
 
 // Step 2 Tags functionality
 const newTag = ref('')
+const newKeyPoint = ref('')
 
 function addTag() {
   if (newTag.value.trim() && !tags.value.includes(newTag.value.trim())) {
@@ -160,84 +181,202 @@ function removeTag(tag: string) {
   tags.value = tags.value.filter((t: any) => t !== tag)
 }
 
+function addKeyPoint() {
+  if (newKeyPoint.value.trim() && !keyPoints.value.includes(newKeyPoint.value.trim())) {
+    keyPoints.value.push(newKeyPoint.value.trim())
+    newKeyPoint.value = ''
+  }
+}
+
+function removeKeyPoint(point: string) {
+  keyPoints.value = keyPoints.value.filter((p: any) => p !== point)
+}
+
 // Step 3: View & Editor
-const viewMode = ref<'editor' | 'demo'>('demo')
 const showVersionHistory = ref(false)
-const showSeoDetails = ref(false)
-const regenGuidelines = ref<Record<number, string>>({})
+const previewViewMode = ref<'rendered' | 'html'>('rendered')
+const isCopied = ref(false)
 
-/**
- * Dynamic SEO Score Calculation
- * Criteria:
- * 1. Title presence (H1) -> 20 pts
- * 2. Article length (> 600 words) -> 25 pts
- * 3. Keyword density (Presence of tags) -> 20 pts
- * 4. Structure (H2/H3 presence) -> 15 pts
- * 5. Multimedia/Links (Markdown links presence) -> 10 pts
- * 6. Readability (Lists presence) -> 10 pts
- */
-const seoScore = computed(() => {
-  let score = 0
-  const content = generatedMarkdown.value
-  if (!content) return 0
+// Regeneration State
+const isRegenerating = ref(false)
+const showRegenInput = ref(false)
+const regenGuidelines = ref('')
+const selectedText = ref('')
+const selectionIndices = ref({ start: 0, end: 0 })
+const newVersion = ref('')
+const isReviewingRegen = ref(false)
 
-  // 1. H1 Check
-  if (/^#\s+.+$/m.test(content)) score += 20
+const showSaveDropdown = ref(false)
 
-  // 2. Length Check
-  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length
-  if (wordCount > 600) score += 25
-  else if (wordCount > 300) score += 15
+function downloadArticle(format: 'markdown' | 'html') {
+  let content = generatedMarkdown.value
+  let filename = blogTitle.value.trim() || 'articulo-generado'
+  
+  // Sanitize filename
+  filename = filename.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove accents
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  
+  if (format === 'html') {
+    // Wrap in a basic HTML structure if it's HTML format
+    const htmlContent = marked.parse(content)
+    content = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>${blogTitle.value}</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; }
+        img { max-width: 100%; height: auto; border-radius: 8px; }
+        h1, h2, h3 { color: #111; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        code { font-family: monospace; background: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #f8f8f8; }
+        details { border: 1px solid #eee; padding: 10px; border-radius: 8px; margin: 20px 0; }
+        summary { font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    ${htmlContent}
+</body>
+</html>`
+  }
+  
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${filename}.txt`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  
+  showSaveDropdown.value = false
+}
+const markdownEditor = ref<HTMLTextAreaElement | null>(null)
+const editorType = ref<'markdown' | 'visual'>('markdown')
 
-  // 3. Keyword Density (Tags)
-  const tagsPresent = tags.value.filter(tag => 
-    new RegExp(tag, 'gi').test(content)
-  ).length
-  if (tags.value.length > 0) {
-    score += Math.min(20, Math.floor((tagsPresent / tags.value.length) * 20))
+const renderedHtml = computed(() => {
+  const rawHtml = marked.parse(generatedMarkdown.value) as string
+  return DOMPurify.sanitize(rawHtml, {
+    ADD_ATTR: ['src'],
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+  }).replace(/<details>/g, '<details open>')
+})
+
+function copyToClipboard() {
+  const content = previewViewMode.value === 'rendered' ? generatedMarkdown.value : renderedHtml.value
+  
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(content).then(() => {
+      handleCopySuccess()
+    }).catch(err => {
+      console.error('Clipboard error:', err)
+      fallbackCopyTextToClipboard(content)
+    })
   } else {
-    score += 20 // No tags to check, assume default
+    fallbackCopyTextToClipboard(content)
+  }
+}
+
+function handleCopySuccess() {
+  isCopied.value = true
+  setTimeout(() => {
+    isCopied.value = false
+  }, 2000)
+}
+
+function fallbackCopyTextToClipboard(text: string) {
+  const textArea = document.createElement("textarea")
+  textArea.value = text
+  
+  // Ensure the textarea is not visible
+  textArea.style.position = "fixed"
+  textArea.style.left = "-9999px"
+  textArea.style.top = "0"
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+
+  try {
+    const successful = document.execCommand('copy')
+    if (successful) {
+      handleCopySuccess()
+    } else {
+      console.error('No se pudo copiar el texto.')
+    }
+  } catch (err) {
+    console.error('Fallback copy error:', err)
   }
 
-  // 4. Structure (Subheadings)
-  if (/^##\s+.+$/m.test(content)) score += 10
-  if (/^###\s+.+$/m.test(content)) score += 5
+  document.body.removeChild(textArea)
+}
 
-  // 5. Links
-  if (/\[.+\]\(.+\)/.test(content)) score += 10
+// Regeneration Logic
+function handleRegenerateClick() {
+  if (!markdownEditor.value) return
 
-  // 6. Lists
-  if (/^\s*[-*+]\s+.+$/m.test(content) || /^\s*\d+\.\s+.+$/m.test(content)) score += 10
+  const start = markdownEditor.value.selectionStart
+  const end = markdownEditor.value.selectionEnd
+  const text = generatedMarkdown.value.substring(start, end).trim()
 
-  return score
-})
+  if (!text) {
+    errorMessage.value = "⚠️ Por favor, selecciona el texto que deseas regenerar en el editor."
+    setTimeout(() => { errorMessage.value = null }, 3000)
+    return
+  }
 
-const seoAnalysis = computed(() => {
-  const content = generatedMarkdown.value
-  const wordCount = content.split(/\s+/).filter(w => w.length > 0).length
-  const tagsPresent = tags.value.filter(tag => new RegExp(tag, 'gi').test(content))
+  selectedText.value = text
+  selectionIndices.value = { start, end }
+  showRegenInput.value = true
+}
+
+async function confirmRegeneration() {
+  if (!regenGuidelines.value.trim() || isRegenerating.value) return
+
+  isRegenerating.value = true
+  try {
+    const response = await regenerateSection({
+      articleTitle: blogTitle.value,
+      sectionHeading: "Sección seleccionada",
+      currentContent: selectedText.value,
+      guidelines: regenGuidelines.value
+    })
+    
+    newVersion.value = response.content
+    isReviewingRegen.value = true
+    showRegenInput.value = false
+    regenGuidelines.value = ''
+  } catch (error: any) {
+    console.error("Regeneration failed", error)
+    errorMessage.value = "❌ Error al regenerar la sección. Intenta de nuevo."
+    setTimeout(() => { errorMessage.value = null }, 5000)
+  } finally {
+    isRegenerating.value = false
+  }
+}
+
+function acceptRegen() {
+  const { start, end } = selectionIndices.value
+  generatedMarkdown.value = 
+    generatedMarkdown.value.substring(0, start) + 
+    newVersion.value + 
+    generatedMarkdown.value.substring(end)
   
-  return [
-    { label: 'Título H1 detectado', value: /^#\s+.+$/m.test(content) },
-    { label: 'Longitud óptima (>600 palabras)', value: wordCount > 600 },
-    { label: 'Palabras clave integradas', value: tags.value.length > 0 && tagsPresent.length === tags.value.length },
-    { label: 'Subencabezados (H2/H3)', value: /^##\s+.+$/m.test(content) },
-    { label: 'Enlaces de referencia', value: /\[.+\]\(.+\)/.test(content) },
-    { label: 'Listas para legibilidad', value: /^\s*[-*+]\s+.+$/m.test(content) || /^\s*\d+\.\s+.+$/m.test(content) }
-  ]
-})
+  cancelRegen()
+}
 
-const googleTitle = computed(() => {
-  const match = generatedMarkdown.value.match(/^#\s+(.+)$/m)
-  return match ? match[1] : blogTitle.value
-})
-
-const googleSnippet = computed(() => {
-  // Take first paragraph after H1
-  const lines = generatedMarkdown.value.split('\n')
-  const firstPara = lines.find(l => l.trim().length > 50 && !l.startsWith('#'))
-  return (firstPara || 'Visualiza cómo aparecerá tu noticia en los resultados de búsqueda de Google. Optimiza el contenido para atraer más clics.').substring(0, 160) + '...'
-})
+function cancelRegen() {
+  isReviewingRegen.value = false
+  showRegenInput.value = false
+  newVersion.value = ''
+  selectedText.value = ''
+}
 
 const SEO_PROMPT_TEMPLATE = `
 # [TITULO]
@@ -338,238 +477,6 @@ async function handleGenerateArticle() {
 
 const generatedMarkdown = ref(fakeArticle)
 
-// Parse markdown into granular blocks for interactive preview
-interface MarkdownBlock {
-  id: string
-  type: 'h1' | 'h2' | 'h3' | 'paragraph' | 'image' | 'list' | 'other'
-  content: string
-  html: string
-}
-
-interface ParsedSection {
-  heading: string      // e.g. "## 1. Requisitos Básicos"
-  headingText: string  // e.g. "1. Requisitos Básicos"
-  content: string      // body text after the heading
-  html: string         // rendered body HTML
-  isRegenerating: boolean
-  h1Html?: string
-}
-
-const _sectionRegen = ref<Record<number, boolean>>({})
-
-const parsedSections = computed<ParsedSection[]>(() => {
-  const md = generatedMarkdown.value
-  // Split by any ## heading (H2)
-  const parts = md.split(/(?=^## )/m)
-  return parts
-    .filter(p => p.trim())
-    .map((part, idx) => {
-      const lines = part.split('\n')
-      const firstLine = lines[0] ?? ''
-      const isHeading = firstLine.startsWith('## ')
-      const heading = isHeading ? firstLine : ''
-      const headingText = isHeading ? heading.replace(/^##\s+/, '') : (idx === 0 ? 'Introducción' : '')
-      
-      let content = isHeading ? lines.slice(1).join('\n').trim() : part.trim()
-      let h1Html = ''
-
-      // Special handling for section 0 to split H1 if present
-      if (idx === 0) {
-        const h1Match = content.match(/^#\s+.+$/m)
-        if (h1Match) {
-          h1Html = DOMPurify.sanitize(marked.parse(h1Match[0]) as string)
-          content = content.replace(/^#\s+.+$/m, '').trim()
-        }
-      }
-
-      const rawHtml = marked.parse(content) as string
-      return {
-        heading,
-        headingText,
-        content,
-        html: DOMPurify.sanitize(rawHtml, {
-          ADD_ATTR: ['src'],
-          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-        }).replace(/<details>/g, '<details open>'),
-        isRegenerating: _sectionRegen.value[idx] ?? false,
-        h1Html
-      }
-    })
-})
-
-const articleBlocks = computed<MarkdownBlock[]>(() => {
-  const md = generatedMarkdown.value
-  if (!md) return []
-
-  // Split into blocks. We want to identify:
-  // - H1 (# ...)
-  // - H2 (## ...)
-  // - H3 (### ...)
-  // - Images (![...](...))
-  // - Lists (Starting with - or * or digit.)
-  // - Paragraphs (everything else)
-  
-  // First, let's normalize line endings
-  const normalized = md.replace(/\r\n/g, '\n')
-  
-  // We'll split by double newline as a starting point, but we need to be careful with lists and headers
-  // A better way is to split while preserving markers
-  const blocks: MarkdownBlock[] = []
-  
-  // regex that matches:
-  // 1. Headings: ^#{1,3}\s+.+$
-  // 2. Images: ^!\[.*?\]\(.*?\)$
-  // 3. Everything else (paragraphs, lists)
-  
-  // We will split by lines and group them
-  const lines = normalized.split('\n')
-  let currentParagraphLines: string[] = []
-
-  const flushParagraph = () => {
-    if (currentParagraphLines.length > 0) {
-      const content = currentParagraphLines.join('\n').trim()
-      if (content) {
-        blocks.push({
-          id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
-          type: content.startsWith('- ') || content.startsWith('* ') || /^\d+\.\s/.test(content) ? 'list' : 'paragraph',
-          content,
-          html: DOMPurify.sanitize(marked.parse(content) as string, {
-            ADD_ATTR: ['src'],
-            ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-          }).replace(/<details>/g, '<details open>')
-        })
-      }
-      currentParagraphLines = []
-    }
-  }
-
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i] || ''
-    const line = rawLine.trim()
-    
-    if (line.startsWith('# ')) {
-      flushParagraph()
-      blocks.push({
-        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'h1',
-        content: line,
-        html: DOMPurify.sanitize(marked.parse(line) as string)
-      })
-    } else if (line.startsWith('## ')) {
-      flushParagraph()
-      blocks.push({
-        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'h2',
-        content: line,
-        html: DOMPurify.sanitize(marked.parse(line) as string)
-      })
-    } else if (line.startsWith('### ')) {
-      flushParagraph()
-      blocks.push({
-        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'h3',
-        content: line,
-        html: DOMPurify.sanitize(marked.parse(line) as string, {
-          ADD_ATTR: ['src'],
-          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-        })
-      })
-    } else if (/^!\[.*?\]\(.*?\)$/.test(line)) {
-      flushParagraph()
-      blocks.push({
-        id: `block-${blocks.length}-${Math.random().toString(36).substr(2, 5)}`,
-        type: 'image',
-        content: line,
-        html: DOMPurify.sanitize(marked.parse(line) as string, {
-          ADD_ATTR: ['src'],
-          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-        })
-      })
-    } else if (line === '') {
-      flushParagraph()
-    } else {
-      currentParagraphLines.push(lines[i] as string)
-    }
-  }
-  flushParagraph()
-
-  return blocks
-})
-
-const draggedBlockIndex = ref<number | null>(null)
-
-function onBlockDragStart(index: number) {
-  draggedBlockIndex.value = index
-}
-
-function onBlockDrop(event: DragEvent, index: number) {
-  if (draggedBlockIndex.value !== null) {
-    const blocks = [...articleBlocks.value]
-    const [removed] = blocks.splice(draggedBlockIndex.value, 1)
-    if (removed) {
-      blocks.splice(index, 0, removed)
-      // Update generatedMarkdown by joining block contents
-      generatedMarkdown.value = blocks.map(b => b.content).join('\n\n')
-    }
-    draggedBlockIndex.value = null
-  } else {
-    // Check for gallery image drop
-    const data = event.dataTransfer?.getData('text/plain')
-    if (data && data.startsWith('![')) {
-      const blocks = [...articleBlocks.value]
-      const newContents = blocks.map(b => b.content)
-      newContents.splice(index, 0, data)
-      generatedMarkdown.value = newContents.join('\n\n')
-    }
-  }
-}
-
-function removeBlock(index: number) {
-  const blocks = [...articleBlocks.value]
-  blocks.splice(index, 1)
-  generatedMarkdown.value = blocks.map(b => b.content).join('\n\n')
-}
-
-function replaceSectionContent(sectionIdx: number, newContent: string) {
-  const sections = parsedSections.value
-  const updated = sections.map((s, i) => {
-    if (i !== sectionIdx) return s.heading ? `${s.heading}\n${s.content}` : s.content
-    return s.heading ? `${s.heading}\n${newContent}` : newContent
-  })
-  generatedMarkdown.value = updated.join('\n\n')
-}
-
-async function handleRegenerateSection(sectionIdx: number) {
-  const section = parsedSections.value[sectionIdx]
-  if (!section || _sectionRegen.value[sectionIdx]) return
-  _sectionRegen.value = { ..._sectionRegen.value, [sectionIdx]: true }
-  try {
-    const result = await regenerateSection({
-      articleTitle: blogTitle.value,
-      sectionHeading: section.headingText,
-      currentContent: section.content,
-      context: additionalContext.value,
-      guidelines: regenGuidelines.value[sectionIdx] || '',
-    })
-    replaceSectionContent(sectionIdx, result.content)
-  } catch (e: any) {
-    if (e?.message?.includes('429')) {
-      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un momento e inténtalo de nuevo."
-      setTimeout(() => { errorMessage.value = null }, 6000)
-    } else {
-      errorMessage.value = "❌ Error al regenerar la sección. Intenta de nuevo."
-      setTimeout(() => { errorMessage.value = null }, 4000)
-    }
-  } finally {
-    _sectionRegen.value = { ..._sectionRegen.value, [sectionIdx]: false }
-  }
-}
-
-const renderedMarkdown = computed(() => {
-  const rawHtml = marked.parse(generatedMarkdown.value) as string
-  return DOMPurify.sanitize(rawHtml).replace(/<details>/g, '<details open>')
-})
-
 const fileInput = ref<HTMLInputElement | null>(null)
 
 function triggerImageUpload() {
@@ -585,17 +492,6 @@ async function handleImageUpload(event: Event) {
   })
   
   input.value = ''
-}
-
-function handleFileDrop(event: DragEvent) {
-  event.preventDefault()
-  if (event.dataTransfer?.files) {
-    Array.from(event.dataTransfer.files).forEach(file => {
-      if (file.type.startsWith('image/')) {
-        processImageFile(file)
-      }
-    })
-  }
 }
 
 function processImageFile(file: File) {
@@ -620,26 +516,39 @@ function insertImage(img: { name: string, data: string }) {
   generatedMarkdown.value += markdown
 }
 
-function onImageDragStart(event: DragEvent, img: { name: string, data: string }) {
-  if (event.dataTransfer) {
-    event.dataTransfer.setData('text/plain', `![${img.name}](${img.data})`)
-    event.dataTransfer.dropEffect = 'copy'
+// Global scroll lock for Step 3 - Force absolute height and overflow hidden
+watch(currentStep, (newStep) => {
+  if (typeof window !== 'undefined') {
+    if (newStep === 3) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100%';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.style.height = '100%';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+      document.documentElement.style.overflow = '';
+      document.documentElement.style.height = '';
+    }
   }
-}
+}, { immediate: true })
 
-function onEditorDrop(event: DragEvent) {
-  // If it's a drag from our gallery, the data is already set in onDragStart
-  // If it's a file from outside, we could handle it too, but let's keep it simple
-  // The default behavior for text/plain data is to insert it at the cursor which is what we want
-}
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    document.body.style.overflow = '';
+    document.body.style.height = '';
+    document.documentElement.style.overflow = '';
+    document.documentElement.style.height = '';
+  }
+})
 
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-text pb-20 font-sans">
+  <div :class="['bg-background text-text font-sans flex flex-col', currentStep === 3 ? 'h-screen overflow-hidden' : 'min-h-screen pb-20']">
     <!-- Top Navigation -->
-    <nav class="bg-white sticky top-0 z-40 shadow-sm border-b border-transparent">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav class="bg-white sticky top-0 z-40 shadow-sm border-b border-secondary/10 shrink-0">
+      <div class="px-6 sm:px-12 lg:px-16 w-full">
         <div class="flex flex-col sm:flex-row justify-between items-center h-auto sm:h-16 py-4 sm:py-0 gap-4">
           <div class="flex items-center gap-3">
             <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary flex items-center justify-center text-white font-bold">N</div>
@@ -689,7 +598,7 @@ function onEditorDrop(event: DragEvent) {
     </transition>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 sm:mt-12">
+    <main :class="['transition-all duration-300 flex-1 flex flex-col min-h-0', currentStep === 3 ? 'px-6 sm:px-10 w-full' : 'mt-8 sm:mt-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-20 overflow-visible']">
       
       <transition 
         enter-active-class="transition-opacity duration-300 ease-out" 
@@ -774,78 +683,95 @@ function onEditorDrop(event: DragEvent) {
                   <div class="flex gap-2 mb-4">
                     <input 
                       id="puntos-clave"
-                      v-model="newTag" 
-                      @keydown.enter.prevent="addTag"
+                      v-model="newKeyPoint" 
+                      @keydown.enter.prevent="addKeyPoint"
                       type="text" 
                       class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm"
                       placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
                     />
-                    <button @click="addTag" class="px-4 py-2 bg-secondary/10 hover:bg-secondary/20 text-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 shadow-sm shrink-0">
+                    <button @click="addKeyPoint" class="px-4 py-2 bg-secondary/10 hover:bg-secondary/20 text-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 shadow-sm shrink-0">
                       Añadir
                     </button>
                   </div>
                   
                   <!-- Tags List Inline -->
-                  <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
-                    <span v-for="(tag, index) in tags" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 text-primary border border-primary/20">
-                      {{ tag }}
-                      <button @click="removeTag(tag)" class="text-primary/60 hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full p-0.5" title="Eliminar punto clave">
+                  <div class="flex flex-wrap gap-2" v-if="keyPoints.length > 0">
+                    <span v-for="(point, index) in keyPoints" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 text-primary border border-primary/20">
+                      {{ point }}
+                      <button @click="removeKeyPoint(point)" class="text-primary/60 hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full p-0.5" title="Eliminar punto clave">
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     </span>
                   </div>
                 </div>
 
-                <!-- URL Scraper -->
+                <!-- Reference URLs -->
                 <div class="pt-6 border-t border-secondary/10">
-                  <label for="reference-url" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">URLs de Referencia</label>
-                  <input
-                    id="reference-url"
-                    v-model="referenceUrl"
-                    @keydown.enter.prevent="handleScrape"
-                    type="text"
-                    class="block w-full rounded-2xl border-0 py-4 px-5 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-relaxed transition-shadow"
-                    placeholder="Pega un enlace y pulsa Enter..."
-                  />
-                  
-                  <!-- Smart URL Scraper Feedback -->
-                  <div v-if="isScraping" class="mt-4 flex items-center gap-2 text-sm text-primary font-medium bg-primary/10 p-3 rounded-lg w-fit transition-all duration-300">
-                    <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    Analizando URLs...
+                  <div class="mb-4">
+                    <label for="reference-url" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">URLs de referencia <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
+                    <p class="text-xs text-secondary">Añade enlaces a artículos, noticias o fuentes oficiales que la IA deba analizar para generar el contenido.</p>
                   </div>
-                  <div v-else-if="scrapedReferences.length > 0" class="mt-4 space-y-2 transition-all duration-300">
-                    <p class="text-xs font-semibold text-secondary uppercase tracking-wider">Lectura de fuentes completada:</p>
-                    <div class="flex flex-wrap gap-2">
-                      <div v-for="url in scrapedReferences" :key="url.url" class="inline-flex items-center gap-2 rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent ring-1 ring-inset ring-accent/20">
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
-                        {{ url.title }}
+                  <div class="flex gap-2 mb-4">
+                    <div class="relative flex-1 group ring-1 ring-secondary/20 rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-white">
+                      <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <svg class="h-4 w-4 text-secondary/40 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                       </div>
+                      <input 
+                        id="reference-url"
+                        v-model="referenceUrl" 
+                        @keydown.enter.prevent="handleScrape"
+                        type="text" 
+                        class="block w-full border-0 py-3 pl-10 pr-4 text-text placeholder:text-secondary/40 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
+                        placeholder="https://boe.es/noticia-importante..." 
+                      />
+                    </div>
+                    <button 
+                      @click="handleScrape" 
+                      :disabled="isScraping"
+                      class="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-sm transition-all hover:bg-primary/90 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <svg v-if="isScraping" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      {{ isScraping ? 'Leyendo...' : 'Analizar URL' }}
+                    </button>
+                  </div>
+
+                  <!-- Scraped references list -->
+                  <div class="space-y-2" v-if="scrapedReferences.length > 0">
+                    <div v-for="(ref, index) in scrapedReferences" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 group animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div class="flex items-center gap-3 overflow-hidden">
+                        <div class="h-8 w-8 rounded-lg bg-white border border-primary/20 flex items-center justify-center shrink-0">
+                           <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                          <span class="text-xs font-bold text-text truncate leading-tight">{{ ref.title || 'Nueva Referencia' }}</span>
+                          <span class="text-[10px] text-secondary truncate">{{ ref.url }}</span>
+                        </div>
+                      </div>
+                      <button @click="removeScrapedLink(ref.url)" class="p-1 px-2 text-primary/40 hover:text-red-500 transition-colors" title="Eliminar referencia">
+                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-              
-              <div class="p-6 border-t border-secondary/10 bg-secondary/5 flex justify-end">
-                <button 
-                  @click="handleProceedToArchitect" 
-                  :disabled="architectLoading"
-                  class="group inline-flex items-center justify-center rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
-                >
-                  <div v-if="architectLoading" class="flex items-center gap-2">
-                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    Redactando Plan...
-                  </div>
-                  <div v-else class="flex items-center">
-                    Continuar a Diseño
-                    <svg class="ml-2 -mr-1 h-5 w-5 group-hover:translate-x-1 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" /></svg>
-                  </div>
-                </button>
+
+                <!-- Context and Guidelines moved from sidebar -->
+                <div class="pt-6 border-t border-secondary/10">
+                  <label for="additional-context" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
+                  <p class="text-xs text-secondary mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
+                  <textarea
+                    id="additional-context"
+                    v-model="additionalContext"
+                    rows="4"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary text-sm resize-none transition-shadow"
+                    placeholder="Ej: Tono cercano y optimista. No mencionar requisitos de edad..."
+                  ></textarea>
+                </div>
               </div>
             </div>
 
             <!-- SIDEBAR: TARGETING -->
-            <aside class="lg:col-span-1">
-              <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 lg:sticky lg:top-24 h-full flex flex-col">
+            <aside class="lg:col-span-1 h-full">
+              <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 lg:sticky lg:top-24 flex flex-col h-full min-h-[500px]">
                 <div class="flex items-center gap-2 pb-4 border-b border-secondary/10 shrink-0">
                   <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -853,56 +779,86 @@ function onEditorDrop(event: DragEvent) {
                   <h3 class="font-bold text-text">Preferencias</h3>
                 </div>
 
-                <div class="space-y-6 pt-6">
-                  <div>
-                    <label for="audience" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Público Objetivo</label>
-                    <select
-                      id="audience"
-                      v-model="audience"
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
-                    >
-                      <option value="General">General</option>
-                      <option value="Principiantes">Principiantes</option>
-                      <option value="Expertos">Profesionales</option>
-                      <option value="Estudiantes">Académico</option>
-                      <option value="Técnico">Perfil Técnico</option>
-                    </select>
+                <div class="flex-1 flex flex-col pt-8 overflow-y-auto pr-2 custom-scrollbar">
+                  <!-- Keywords moved from Step 2 -->
+                  <div class="mb-8">
+                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Etiquetas / Keywords</label>
+                    <div class="flex flex-wrap gap-2 mb-3" v-if="tags.length > 0">
+                      <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-lg bg-secondary/10 px-2.5 py-1.5 text-xs font-semibold text-text shadow-sm border border-secondary/20 transition-all hover:bg-secondary/20">
+                        {{ tag }}
+                        <button @click="removeTag(tag)" class="-mr-1 text-secondary/40 hover:text-red-500 rounded-full hover:bg-secondary/30 transition-colors p-0.5" title="Eliminar etiqueta">
+                           <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+                        </button>
+                      </span>
+                    </div>
+                    <div class="relative group group-focus-within:ring-2 group-focus-within:ring-primary rounded-xl overflow-hidden shadow-sm ring-1 ring-inset ring-secondary/20">
+                      <input
+                        v-model="newTag"
+                        @keydown.enter.prevent="addTag"
+                        type="text"
+                        class="block w-full border-0 py-3 px-4 pr-10 text-text placeholder:text-secondary/40 focus:outline-none focus:ring-0 text-sm bg-white"
+                        placeholder="Añadir y pulsar Enter..."
+                      />
+                      <button @click="addTag" class="absolute right-1 top-1.5 h-8 w-8 flex items-center justify-center text-secondary/30 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg">
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <label for="intent" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Intención de Búsqueda</label>
-                    <select
-                      id="intent"
-                      v-model="searchIntent"
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
-                    >
-                      <option value="Informativo">Informativo</option>
-                      <option value="Tutorial">Tutorial</option>
-                      <option value="Transaccional">Transaccional</option>
-                      <option value="Comparativo">Comparativo</option>
-                    </select>
+                  <div class="space-y-8">
+                    <div>
+                      <label for="audience" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Público Objetivo</label>
+                      <select
+                        id="audience"
+                        v-model="audience"
+                        class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
+                      >
+                        <option value="General">General</option>
+                        <option value="Principiantes">Principiantes</option>
+                        <option value="Expertos">Profesionales</option>
+                        <option value="Estudiantes">Académico</option>
+                        <option value="Técnico">Perfil Técnico</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label for="intent" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Intención de Búsqueda</label>
+                      <select
+                        id="intent"
+                        v-model="searchIntent"
+                        class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary sm:text-sm bg-secondary/5"
+                      >
+                        <option value="Informativo">Informativo</option>
+                        <option value="Tutorial">Tutorial</option>
+                        <option value="Transaccional">Transaccional</option>
+                        <option value="Comparativo">Comparativo</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div class="mt-6 pt-6 border-t border-secondary/10">
-                  <label for="additional-context" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
-                  <p class="text-xs text-secondary mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
-                  <textarea
-                    id="additional-context"
-                    v-model="additionalContext"
-                    rows="4"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/10 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary text-xs resize-none transition-shadow"
-                    placeholder="Ej: Tono cercano y optimista. No mencionar requisitos de edad..."
-                  ></textarea>
-                </div>
-
-                <div class="mt-auto pt-6">
-                  <div class="bg-primary/5 rounded-2xl p-4 border border-primary/10">
+                <div class="mt-auto pt-6 border-t border-secondary/10 flex flex-col items-stretch gap-4">
+                  <div class="w-full bg-primary/5 rounded-xl p-4 border border-primary/10">
                     <p class="text-[10px] text-secondary leading-relaxed font-medium">
                       <span class="text-primary font-bold uppercase tracking-tighter mr-1">Pro Tip:</span> 
                       Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
                     </p>
                   </div>
+
+                  <button 
+                    @click="handleProceedToArchitect" 
+                    :disabled="architectLoading"
+                    class="group w-full inline-flex items-center justify-center rounded-xl bg-primary px-6 py-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    <div v-if="architectLoading" class="flex items-center gap-2">
+                      <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      Generando...
+                    </div>
+                    <div v-else class="flex items-center">
+                      Continuar a Diseño
+                      <svg class="ml-2 -mr-1 h-5 w-5 group-hover:translate-x-1 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clip-rule="evenodd" /></svg>
+                    </div>
+                  </button>
                 </div>
               </div>
             </aside>
@@ -922,10 +878,18 @@ function onEditorDrop(event: DragEvent) {
               
               <!-- Outline Card -->
               <div class="bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 flex flex-col items-stretch shrink-0 ring-1 ring-text/5">
-              <h2 class="text-lg font-bold text-text mb-1 flex items-center gap-2">
-                <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
-                Esquema Interactivo
-              </h2>
+              <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold text-text flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                  Esquema Interactivo
+                </h2>
+                <button 
+                  @click="toggleAllOutline" 
+                  class="text-[10px] font-bold text-primary hover:text-primary/80 uppercase tracking-wider px-2 py-1 bg-primary/5 rounded border border-primary/10 transition-colors"
+                >
+                  {{ allOutlineIncluded ? 'Deseleccionar Todo' : 'Seleccionar Todo' }}
+                </button>
+              </div>
               <p class="text-sm text-secondary mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
               
               <ul class="space-y-3 pr-2">
@@ -1054,25 +1018,6 @@ function onEditorDrop(event: DragEvent) {
               
               <div class="flex-1 p-5 overflow-y-auto space-y-8">
                 
-                <!-- Keywords -->
-                <div>
-                  <label class="block text-xs font-bold text-secondary uppercase tracking-wider mb-2">Etiquetas / Keywords</label>
-                  <div class="flex flex-wrap gap-2 mb-3">
-                    <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-md bg-secondary/10 px-2.5 py-1 text-xs font-semibold text-text shadow-sm border border-secondary/20">
-                      {{ tag }}
-                      <button @click="removeTag(tag)" class="-mr-1 text-secondary/40 hover:text-red-500 rounded-full hover:bg-secondary/20 transition-colors">
-                         <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
-                      </button>
-                    </span>
-                  </div>
-                  <input
-                    v-model="newTag"
-                    @keydown.enter.prevent="addTag"
-                    type="text"
-                    class="block w-full rounded-xl border-0 py-2.5 px-3 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm"
-                    placeholder="Añadir nueva y pulsar Enter..."
-                  />
-                </div>
 
                 <!-- Tone Slider -->
                 <div>
@@ -1082,7 +1027,7 @@ function onEditorDrop(event: DragEvent) {
                       {{ toneValue < 33 ? 'Profesional' : toneValue < 66 ? 'Cercano' : 'Viral/Audaz' }}
                     </span>
                   </label>
-                  <input type="range" v-model="toneValue" min="0" max="100" class="w-full h-2 bg-secondary/20 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
+                  <input type="range" v-model.number="toneValue" min="0" max="100" class="w-full h-2 bg-secondary/20 rounded-lg appearance-none cursor-pointer mb-2 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
                   <div class="flex justify-between text-[10px] uppercase font-bold text-secondary/40">
                     <span>Prof.</span>
                     <span>Cercano</span>
@@ -1141,227 +1086,208 @@ function onEditorDrop(event: DragEvent) {
           </div>
         </div>
         <!-- STEP 3: EDITOR & DEMO -->
-        <div v-else-if="currentStep === 3" class="space-y-6 mb-8" key="step3">
+        <!-- STEP 3: MINIMALIST EDITOR & PREVIEW -->
+        <div v-else-if="currentStep === 3" class="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-xl border border-secondary/10 overflow-hidden" key="step3">
           
           <!-- Top Tool Bar -->
-          <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            
-            <div class="flex items-center gap-3">
-              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-secondary bg-white border border-secondary/20 rounded-xl hover:bg-secondary/5 transition-colors focus:outline-none focus:ring-2 focus:ring-primary">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          <div class="bg-background border-b border-secondary/10 p-4 flex justify-between items-center shrink-0">
+            <div class="flex items-center gap-4">
+              <button @click="goNext(2)" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 Volver
               </button>
+              <div class="relative">
+                <button 
+                  @click="showSaveDropdown = !showSaveDropdown"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-accent bg-accent/5 border border-accent/20 rounded-lg hover:bg-accent/10 transition-colors"
+                >
+                  <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                  Guardar
+                </button>
+                
+                <!-- Dropdown -->
+                <div v-if="showSaveDropdown" class="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-secondary/10 py-2 z-50">
+                  <div class="px-3 py-2 border-b border-secondary/5 mb-1">
+                    <span class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest">Descargar como</span>
+                  </div>
+                  <button 
+                    @click="downloadArticle('markdown')"
+                    class="w-full text-left px-4 py-2 text-xs font-semibold text-text hover:bg-primary/5 hover:text-primary transition-colors flex items-center gap-2"
+                  >
+                    <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    Markdown (.txt)
+                  </button>
+                  <button 
+                    @click="downloadArticle('html')"
+                    class="w-full text-left px-4 py-2 text-xs font-semibold text-text hover:bg-primary/5 hover:text-primary transition-colors flex items-center gap-2"
+                  >
+                    <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                    HTML (.txt)
+                  </button>
+                </div>
+
+                <!-- Backdrop for closing dropdown -->
+                <div v-if="showSaveDropdown" @click="showSaveDropdown = false" class="fixed inset-0 z-40"></div>
+              </div>
+              <div class="h-6 w-px bg-secondary/10"></div>
             </div>
 
-            <!-- Toggle Switch -->
-            <div class="flex bg-secondary/10 p-1 rounded-xl w-full max-w-xs relative isolate">
-              <button @click="viewMode = 'editor'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'editor' ? 'text-primary' : 'text-secondary/60 hover:text-text'">Editor</button>
-              <button @click="viewMode = 'demo'" class="flex-1 py-1.5 text-sm font-semibold rounded-lg z-10 transition-colors" :class="viewMode === 'demo' ? 'text-primary' : 'text-secondary/60 hover:text-text'">Vista Previa</button>
-              <div class="absolute inset-y-1 left-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-transform duration-300 ease-out z-0" :class="viewMode === 'demo' ? 'translate-x-[100%]' : 'translate-x-0'"></div>
-            </div>
-
-            <!-- Actions (Version / Export) -->
-            <div class="flex items-center gap-2">
-              <button class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-secondary bg-white border border-secondary/20 rounded-xl hover:bg-secondary/5 transition-colors focus:outline-none focus:ring-2 focus:ring-primary">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div class="flex items-center gap-3">
+              <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 Historial
-              </button>
-              <button class="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary border border-transparent rounded-xl shadow-sm hover:bg-primary/90 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-primary">
-                Publicar Vía API
-                <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" /><path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" /></svg>
               </button>
             </div>
           </div>
 
-          <!-- Workplace Area -->
-          <div class="flex flex-col lg:flex-row gap-6 min-h-[600px] lg:h-[calc(100vh-14rem)]">
+          <!-- Dual Pane Workplace Area -->
+          <div class="flex-1 flex items-stretch overflow-hidden min-h-0">
             
-            <!-- Main Content Area -->
-            <div class="flex-1 flex flex-col gap-6">
-              <!-- EDITOR VIEW -->
-              <div v-show="viewMode === 'editor'" class="flex-1 bg-[#1e1e1e] rounded-2xl shadow-xl border border-secondary/20 flex flex-col overflow-hidden animate-fade-in h-full">
-                <div class="px-4 py-2 bg-secondary/10 border-b border-secondary/20 flex items-center justify-between">
-                  <div class="flex items-center gap-4">
-                    <span class="text-xs font-mono text-secondary/60">borrador.md</span>
-                    <div class="h-4 w-px bg-secondary/20"></div>
-                    <div class="flex items-center gap-2">
-                    </div>
-                  </div>
-                  <span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-widest flex items-center gap-1">
-                    <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                    Live Engine
-                  </span>
+            <!-- EDITOR PANE -->
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-secondary/10 bg-slate-50">
+              <div class="h-11 px-4 bg-background border-b border-secondary/10 flex items-center justify-between shrink-0">
+                <span class="text-[10px] font-black text-secondary/40 uppercase tracking-widest leading-none">Editor de Texto</span>
+                <div class="flex items-center gap-2">
+                  <select 
+                    v-model="editorType"
+                    class="bg-white border border-secondary/20 rounded px-2 py-0.5 text-[10px] font-bold text-secondary focus:ring-0 focus:outline-none cursor-pointer mr-2"
+                  >
+                    <option value="markdown">Markdown</option>
+                    <option value="visual">Vista Visual (Milkdown)</option>
+                  </select>
+                  <button 
+                    v-if="editorType === 'markdown'"
+                    @click="handleRegenerateClick"
+                    class="flex items-center gap-1.5 px-2 py-1 text-[9px] font-bold text-primary bg-primary/5 border border-primary/20 rounded hover:bg-primary/10 transition-colors"
+                  >
+                    ✨ Regenerar Selección
+                  </button>
+                  <span class="text-[9px] font-mono text-secondary/40">borrador.md</span>
                 </div>
+              </div>
+
+              <!-- Regeneration Input Area -->
+              <transition
+                enter-active-class="transition ease-out duration-200"
+                enter-from-class="opacity-0 -translate-y-2"
+                enter-to-class="opacity-100 translate-y-0"
+                leave-active-class="transition ease-in duration-150"
+                leave-from-class="opacity-100 translate-y-0"
+                leave-to-class="opacity-0 -translate-y-2"
+              >
+                <div v-if="showRegenInput" class="p-4 bg-primary/5 border-b border-secondary/10 flex flex-col gap-3">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-primary uppercase tracking-wider">Directrices para la IA</label>
+                    <button @click="showRegenInput = false" class="text-secondary/40 hover:text-secondary">
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  <div class="flex gap-2">
+                    <input 
+                      v-model="regenGuidelines"
+                      @keydown.enter="confirmRegeneration"
+                      type="text" 
+                      placeholder="Ej: hazlo más profesional, resume este punto..." 
+                      class="flex-1 bg-white border border-secondary/20 rounded-lg px-3 py-2 text-xs text-text focus:ring-1 focus:ring-primary focus:outline-none"
+                    />
+                    <button 
+                      @click="confirmRegeneration"
+                      :disabled="isRegenerating"
+                      class="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {{ isRegenerating ? 'Generando...' : 'Confirmar' }}
+                    </button>
+                  </div>
+                </div>
+              </transition>
+
+              <!-- Diff Review Area -->
+              <div v-if="isReviewingRegen" class="flex-1 overflow-hidden flex flex-col bg-white">
+                <div class="px-6 py-4 border-b border-secondary/10 flex items-center justify-between bg-white shadow-sm z-10">
+                  <h3 class="text-xs font-bold text-text uppercase tracking-widest">Revisar Cambios</h3>
+                  <div class="flex gap-2">
+                    <button @click="cancelRegen" class="px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+                      Descartar
+                    </button>
+                    <button @click="acceptRegen" class="px-3 py-1.5 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+                      Aceptar Cambios
+                    </button>
+                  </div>
+                </div>
+                <div class="flex-1 flex divide-x divide-secondary/10 overflow-hidden">
+                  <div class="flex-1 flex flex-col">
+                    <div class="px-4 py-2 bg-red-50/50 border-b border-secondary/10 text-[10px] font-bold text-red-600 uppercase">Original</div>
+                    <div class="flex-1 p-6 overflow-y-auto bg-red-50/30 text-sm font-mono text-red-800 line-through decoration-red-400 whitespace-pre-wrap leading-relaxed">{{ selectedText }}</div>
+                  </div>
+                  <div class="flex-1 flex flex-col">
+                    <div class="px-4 py-2 bg-green-50/50 border-b border-secondary/10 text-[10px] font-bold text-green-600 uppercase">Nueva Versión</div>
+                    <div class="flex-1 p-6 overflow-y-auto bg-green-50/30 text-sm font-mono text-green-800 whitespace-pre-wrap leading-relaxed">{{ newVersion }}</div>
+                  </div>
+                </div>
+              </div>
+
+                <div v-if="editorType === 'visual' && !isReviewingRegen" class="flex-1 min-h-0 flex flex-col">
+                  <MarkdownEditor v-model="generatedMarkdown" />
+                </div>
+
                 <textarea
+                  v-else-if="editorType === 'markdown' && !isReviewingRegen"
+                  ref="markdownEditor"
                   v-model="generatedMarkdown"
-                  @dragover.prevent
-                  @drop="onEditorDrop"
-                  class="w-full h-[600px] p-6 text-sm font-mono border-0 focus:ring-0 resize-none bg-slate-50 text-slate-800"
+                  class="flex-1 w-full p-8 text-sm font-mono border-0 focus:ring-0 resize-none bg-transparent text-slate-800 leading-relaxed overflow-y-auto custom-scrollbar"
                   placeholder="Escribe tu artículo aquí..."
                 ></textarea>
-              </div>
+            </div>
 
-              <!-- DEMO VIEW -->
-              <div v-show="viewMode === 'demo'" class="flex-1 bg-white rounded-2xl shadow-xl border border-secondary/10 overflow-y-auto animate-fade-in h-full">
-                <div class="p-8 sm:p-12 space-y-4">
-                  <div
-                    v-for="(block, bIdx) in articleBlocks"
-                    :key="block.id"
-                    draggable="true"
-                    @dragstart="onBlockDragStart(bIdx)"
-                    @dragover.prevent
-                    @drop="onBlockDrop($event, bIdx)"
-                    class="relative group/block transition-all duration-200 rounded-xl"
+            <!-- PREVIEW PANE -->
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
+              <div class="h-11 px-4 bg-background border-b border-secondary/10 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-4">
+                  <span class="text-[10px] font-black text-secondary/40 uppercase tracking-widest leading-none">Vista Previa</span>
+                  <select 
+                    v-model="previewViewMode"
+                    class="bg-white border border-secondary/20 rounded px-2 py-0.5 text-[10px] font-bold text-secondary focus:ring-0 focus:outline-none cursor-pointer"
+                  >
+                    <option value="rendered">Visualización</option>
+                    <option value="html">Código HTML</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button 
+                    @click="copyToClipboard"
                     :class="[
-                      draggedBlockIndex === bIdx ? 'opacity-20' : 'opacity-100',
-                      block.type === 'image' ? 'cursor-move ring-2 ring-transparent hover:ring-primary/30 p-1' : 'cursor-default'
+                      'flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold border rounded transition-all',
+                      isCopied 
+                        ? 'text-green-600 bg-green-50 border-green-200' 
+                        : 'text-primary bg-primary/5 border-primary/20 hover:bg-primary/10'
                     ]"
                   >
-                    <!-- Visual drag handle for images (always visible on hover) -->
-                    <div v-if="block.type === 'image'" class="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/block:opacity-100 transition-opacity p-2 cursor-move text-secondary/40 hover:text-primary">
-                      <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L10 5.414 7.707 7.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 3zm-3.707 9.293a1 1 0 011.414 0L10 14.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                    </div>
-
-                    <!-- Delete button for images in preview -->
-                    <button 
-                      v-if="block.type === 'image'"
-                      @click="removeBlock(bIdx)"
-                      class="absolute -right-2 -top-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover/block:opacity-100 transition-opacity hover:bg-red-600 shadow-md z-10"
-                      title="Eliminar del preview"
-                    >
-                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-
-                    <div 
-                      v-html="block.html" 
-                      class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl shadow-none"
-                    ></div>
-                    
-                    <!-- Drop indicator after block -->
-                    <div v-if="draggedBlockIndex !== null && draggedBlockIndex !== bIdx" class="h-1 w-full bg-primary/10 rounded-full mt-2 opacity-0 hover:opacity-100 transition-opacity"></div>
+                    <svg v-if="!isCopied" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                    <svg v-else class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                    {{ isCopied ? '¡Copiado!' : 'Copiar' }}
+                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+                    <span class="text-[9px] font-bold text-accent uppercase tracking-wider">Live</span>
                   </div>
+                </div>
+              </div>
+              <div class="flex-1 overflow-y-auto overscroll-contain p-8 sm:p-12 custom-scrollbar">
+                <div 
+                  v-if="previewViewMode === 'rendered'"
+                  v-html="renderedHtml" 
+                  class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl shadow-none"
+                ></div>
+                <div v-else class="h-full">
+                  <textarea
+                    readonly
+                    :value="renderedHtml"
+                    class="w-full h-full p-4 border border-secondary/10 rounded-xl bg-slate-50 text-xs font-mono text-secondary focus:ring-0 resize-none leading-relaxed"
+                  ></textarea>
                 </div>
               </div>
             </div>
 
-            <!-- SEO & Snippet Sidebar -->
-            <div class="w-full lg:w-80 flex flex-col gap-6 shrink-0 h-full overflow-y-auto pr-1">
-              
-              <!-- Google Snippet Simulator -->
-              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden">
-                <div class="p-4 border-b border-secondary/10 bg-background flex items-center gap-2">
-                  <svg class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Vista previa Google</h3>
-                </div>
-                <div class="p-5 font-sans space-y-1">
-                  <div class="text-[14px] text-secondary/60 line-clamp-1">https://tusitio.es › noticias</div>
-                  <div class="text-[20px] text-primary hover:underline cursor-pointer leading-tight line-clamp-2">{{ googleTitle }}</div>
-                  <div class="text-[14px] text-text/80 leading-relaxed line-clamp-3">
-                    <span class="text-secondary/60">hace 2 horas — </span>{{ googleSnippet }}
-                  </div>
-                </div>
-              </div>
-
-              <!-- SEO Verification Checklist -->
-              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden shrink-0">
-                <button 
-                  @click="showSeoDetails = !showSeoDetails"
-                  class="w-full p-4 border-b border-secondary/10 bg-background flex items-center justify-between hover:bg-secondary/5 transition-colors group/seo"
-                >
-                  <div class="flex items-center gap-2">
-                    <h3 class="text-xs font-bold text-secondary uppercase tracking-widest group-hover/seo:text-primary transition-colors">Verificación SEO</h3>
-                    <svg 
-                      class="h-4 w-4 text-secondary/40 group-hover/seo:text-primary transition-all duration-300"
-                      :class="{ 'rotate-180': showSeoDetails }"
-                      viewBox="0 0 20 20" 
-                      fill="currentColor"
-                    >
-                      <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                    </svg>
-                  </div>
-                  <span class="text-xs font-bold text-primary">{{ seoScore }}%</span>
-                </button>
-                
-                <transition
-                  enter-active-class="transition duration-300 ease-out"
-                  enter-from-class="transform -translate-y-2 opacity-0"
-                  enter-to-class="transform translate-y-0 opacity-100"
-                  leave-active-class="transition duration-200 ease-in"
-                  leave-from-class="transform translate-y-0 opacity-100"
-                  leave-to-class="transform -translate-y-2 opacity-0"
-                >
-                  <div v-if="showSeoDetails" class="p-5 space-y-4">
-                    <div v-for="item in seoAnalysis" :key="item.label" class="flex items-start gap-3">
-                      <div class="mt-0.5 shrink-0">
-                        <svg v-if="item.value" class="h-5 w-5 text-accent" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                        <svg v-else class="h-5 w-5 text-secondary/30" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
-                      </div>
-                      <span class="text-xs font-medium" :class="item.value ? 'text-text' : 'text-secondary/40'">{{ item.label }}</span>
-                    </div>
-                    
-                    <!-- Smart Tips -->
-                    <div class="mt-6 pt-6 border-t border-secondary/10">
-                      <div class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest mb-3">Consejo de IA</div>
-                      <div class="bg-primary/5 rounded-xl p-3 border border-primary/10">
-                        <p class="text-[11px] text-primary/80 leading-relaxed font-medium">
-                          {{ seoScore < 90 ? 'Añade más palabras clave secundarias para mejorar la autoridad temática.' : '¡Excelente trabajo! El artículo cumple con todos los estándares SEO recomendados.' }}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </transition>
-              </div>
-              
-              <!-- Media Library (Same as step 2 for consistency) -->
-              <div class="bg-white rounded-2xl shadow-sm border border-secondary/20 overflow-hidden flex flex-col min-h-[300px]">
-                <div class="p-4 border-b border-secondary/10 bg-background flex items-center gap-2 shrink-0">
-                  <svg class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <h3 class="text-xs font-bold text-secondary uppercase tracking-widest">Galería de Imágenes</h3>
-                </div>
-                
-                <div class="p-5 flex-1 overflow-y-auto">
-                  <div 
-                    @click="triggerImageUpload"
-                    @dragover.prevent
-                    @drop="handleFileDrop"
-                    class="border-2 border-dashed border-secondary/20 bg-background rounded-xl p-4 text-center hover:bg-secondary/5 hover:border-secondary/30 transition-colors cursor-pointer mb-4"
-                  >
-                    <svg class="mx-auto h-6 w-6 text-secondary/40 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-                    <span class="text-[10px] text-primary font-bold block uppercase tracking-tight">Subir o Arrastrar</span>
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-3" v-if="uploadedImages.length > 0">
-                    <div 
-                      v-for="img in uploadedImages" 
-                      :key="img.id"
-                      draggable="true"
-                      @dragstart="onImageDragStart($event, img)"
-                      class="aspect-square bg-secondary/10 rounded-lg flex items-center justify-center overflow-hidden border border-secondary/20 cursor-pointer hover:shadow-md transition-all group relative"
-                      :title="'Insertar/Arrastrar ' + img.name"
-                    >
-                      <img :src="img.data" @click="insertImage(img)" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
-                      <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-                      </div>
-                      <button 
-                        @click.stop="deleteImage(img.id)"
-                        class="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm z-10"
-                        title="Eliminar imagen"
-                      >
-                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div class="text-center py-8" v-else>
-                    <svg class="mx-auto h-8 w-8 text-secondary/20 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <p class="text-[10px] text-secondary/40 font-bold uppercase">Sin imágenes</p>
-                  </div>
-                  <p class="text-[9px] text-secondary/40 mt-4 text-center leading-relaxed">Arrastra miniaturas al preview para moverlas.</p>
-                </div>
-              </div>
-
-            </div>
           </div>
         </div>
       </transition>
@@ -1395,12 +1321,11 @@ function onEditorDrop(event: DragEvent) {
 }
 
 :deep(summary::before) {
-  content: '→';
-  @apply text-primary transition-transform duration-300 font-mono;
+  content: "▸";
 }
 
 :deep(details[open] summary::before) {
-  @apply rotate-90;
+  content: "▾";
 }
 
 :deep(details > ul) {
