@@ -5,8 +5,28 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'SavedArticles',
+      component: () => import('@/features/articles/views/SavedArticlesView.vue'),
+    },
+    {
+      path: '/generador',
       name: 'Generator',
       component: () => import('@/features/articles/views/ArticleGeneratorView.vue'),
+    },
+    {
+      path: '/login',
+      name: 'Login',
+      component: () => import('@/features/auth/views/LoginView.vue'),
+    },
+    {
+      path: '/mis-noticias/:id',
+      name: 'SavedArticleDetail',
+      component: () => import('@/features/articles/views/SavedArticleDetailView.vue'),
+    },
+    {
+      path: '/mis-noticias/:id/editar',
+      name: 'EditSavedArticle',
+      component: () => import('@/features/articles/views/EditSavedArticleView.vue'),
     },
   ],
 })

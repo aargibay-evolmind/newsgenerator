@@ -18,32 +18,38 @@ class GenerateOutlineService
      * @param string $additionalContext
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = ''): array
+    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7): array
     {
         $prompt = sprintf(
-            "Actúa como el Arquitecto Jefe de contenido para un blog de noticias de alta retención. Vas a diseñar el esquema para un artículo titulado: '%s'.\n",
+            "Actúa como el **Arquitecto Jefe y Estratega de Contenido Académico** de NewsGen. Tu misión es diseñar la estructura de una guía definitiva titulada: '%s'.\n",
             $title
         );
+        $prompt .= "Buscas atraer a potenciales alumnos interesados en formación (FP, cursos, certificados) en España.\n";
+
+        $toneLabel = $tone < 33 ? 'Profesional, autoritario y técnico' : ($tone < 66 ? 'Orientador, cercano y empático' : 'Motivador, dinámico y viral');
+        $prompt .= sprintf("**Tono del artículo:** %s (Career Coach).\n", $toneLabel);
 
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
 
         if (!empty(trim($additionalContext))) {
-            $prompt .= sprintf("**Contexto y directrices adicionales del redactor:** %s\n", $additionalContext);
+            $prompt .= sprintf("**Directrices de Negocio/Contexto:** %s\n", $additionalContext);
         }
 
         if (!empty($keywords)) {
-            $prompt .= sprintf("**Etiquetas / Keywords (SEO y Categorización):** %s.\n", implode(', ', $keywords));
+            $prompt .= sprintf("**Palabras Clave SEO a cubrir:** %s.\n", implode(', ', $keywords));
         }
         
         if (!empty($keyPoints)) {
-            $prompt .= sprintf("Debes asegurarte de cubrir obligatoriamente los siguientes Puntos Clave como parte del esquema: %s.\n", implode(', ', $keyPoints));
+            $prompt .= sprintf("Debes integrar obligatoriamente estos Puntos Críticos en el índice: %s.\n", implode(', ', $keyPoints));
         }
 
         $prompt .= "
-Requisitos:
-1. Diseña un índice (outline) con encabezados muy descriptivos. Devuélvelos en orden lógico.
-2. Basado en el tema analizado, propón 3 enlaces hacia páginas de autoridad (ministerios, BOE, organizaciones oficiales, Wikipedia) relevantes que puedan servir como fuentes para el lector. Inventa o infiere las URLs si es necesario, pero mantenlas creíbles.
+Requisitos del Esquema:
+1. Diseña un índice (outline) con exactamente {$sectionCount} encabezados muy descriptivos y orientados a la conversión. Devuélvelos en orden lógico.
+2. **NUNCA incluyas** encabezados para la 'Tabla de contenidos', 'Introducción' o 'Resumen AEO', ya que el sistema los inyecta automáticamente.
+3. El esquema debe responder a las necesidades del sector educativo español en 2026 (empleabilidad, requisitos oficiales, ventajas del curso).
+4. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, portales de empleo reales o Wikipedia) relevantes para el tema.
 ";
 
         $schema = [
@@ -89,7 +95,8 @@ Requisitos:
             ];
 
             if (isset($data['outline']) && is_array($data['outline'])) {
-                foreach ($data['outline'] as $index => $item) {
+                $outlineItems = array_slice($data['outline'], 0, $sectionCount);
+                foreach ($outlineItems as $index => $item) {
                     $responseData['outline'][] = [
                         'id' => time() + $index, // Mocked ID
                         'text' => $item['text'] ?? 'Nuevo Encabezado',

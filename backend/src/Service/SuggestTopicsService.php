@@ -15,9 +15,9 @@ class SuggestTopicsService
     public function suggest(string $topic): array
     {
         $prompt = empty(trim($topic))
-            ? "Eres un periodista experto en tendencias de noticias internacionales y de España. Sugiere exactamente 3 titulares de noticias actuales, variados y muy atractivos (trending topics o noticias de interés general) para un blog profesional. Deben ser temas que inviten a hacer clic. Solo devuelve los conceptos/títulos."
+            ? "Eres un **Estratega de Crecimiento Académico en España**. Sugiere exactamente 3 titulares de noticias o guías de formación que estén marcando tendencia ahora mismo (nuevas convocatorias de FP, profesiones más buscadas en 2026 o formación con alta empleabilidad). Deben ser magnéticos, ultra-clicables y enfocados a personas buscando mejorar su carrera profesional. Solo devuelve los conceptos/títulos."
             : sprintf(
-                "Eres un periodista experto en SEO y marketing de contenidos. Sugiere exactamente 3 titulares o enfoques alternativos atractivos para un artículo sobre: '%s'. Deben ser descriptivos y diseñados para captar clics. Solo devuelve los conceptos/títulos.",
+                "Eres un **Estratega SEO Educativo**. Sugiere exactamente 3 titulares competitivos y altamente atractivos para un artículo sobre: '%s'. Deben enfocarse en la resolución de dudas críticas, la obtención de títulos oficiales o el éxito laboral 2026. Diseñados para captar el interés inmediato del potencial alumno. Solo devuelve los conceptos/títulos.",
                 $topic
             );
 

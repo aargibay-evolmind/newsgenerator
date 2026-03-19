@@ -11,23 +11,23 @@ class RegenerateSectionService
     public function regenerate(string $articleTitle, string $sectionHeading, string $currentContent, string $context = '', string $guidelines = ''): string
     {
         $prompt = sprintf(
-            "Eres un redactor experto. Dentro del artículo titulado \"%s\", tienes que reescribir únicamente la sección \"%s\".\n\n",
-            $articleTitle,
-            $sectionHeading
+            "Eres un **Estratega de Contenido Senior** de NewsGen. Tu tarea es reescribir con máxima autoridad y precisión la sección \"%s\" del artículo \"%s\".\n\n",
+            $sectionHeading,
+            $articleTitle
         );
 
-        $prompt .= "El contenido actual de esa sección es:\n\n";
+        $prompt .= "El contenido actual es:\n";
         $prompt .= "---\n" . $currentContent . "\n---\n\n";
 
         if (!empty(trim($guidelines))) {
-            $prompt .= sprintf("**INSTRUCCIÓN DE AJUSTE ESPECÍFICA (Prioridad alta):** %s\n\n", $guidelines);
+            $prompt .= sprintf("**DIRECTRICES ESPECÍFICAS DE MEJORA (Prioridad):** %s\n\n", $guidelines);
         }
 
-        $prompt .= "Instrucciones:\n";
-        $prompt .= "- Reescribe únicamente el contenido de esa sección, mejorándolo significativamente.\n";
-        $prompt .= "- Mantén el mismo nivel de detalle o aumenta ligeramente la profundidad.\n";
-        $prompt .= "- Devuelve SOLO el contenido de la sección en Markdown, SIN incluir el título/encabezado.\n";
-        $prompt .= "- No incluyas ningún texto introductorio ni explicativo, solo el contenido en Markdown.\n";
+        $prompt .= "Instrucciones de Redacción:\n";
+        $prompt .= "- Mejora el estilo siguiendo un tono experto, orientador y profesional (SEO 2026/2027).\n";
+        $prompt .= "- Integra datos, beneficios o referencias oficiales si el contexto lo permite.\n";
+        $prompt .= "- Devuelve solo el Markdown del cuerpo de la sección, SIN el título del encabezado.\n";
+        $prompt .= "- Prohibido incluir notas, introducciones o textos fuera del contenido final.\n";
 
         $models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
         $result = $this->gemini->generateContent($prompt, $models);

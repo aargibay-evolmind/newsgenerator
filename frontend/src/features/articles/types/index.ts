@@ -47,7 +47,6 @@ export interface GenerateArticleRequest {
   title: string;
   keywords: string[];
   tone: number;
-  articleLength: string;
   audience?: string;
   searchIntent?: string;
   additionalContext?: string;
@@ -71,4 +70,21 @@ export interface RegenerateSectionRequest {
 
 export interface RegenerateSectionResponse {
   content: string;
+}
+
+export interface SaveArticleRequest {
+  title: string;
+  data: {
+    markdown: string;
+    [key: string]: any;
+  };
+}
+
+export interface SavedArticle {
+  id: string;
+  title: string;
+  data?: any;
+  user_id?: string;
+  created_at: string;
+  updated_at: string;
 }

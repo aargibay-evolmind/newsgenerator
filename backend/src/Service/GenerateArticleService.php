@@ -17,7 +17,6 @@ class GenerateArticleService
         $title = $payload['title'] ?? 'Sin Título';
         $keywords = $payload['keywords'] ?? [];
         $tone = (int) ($payload['tone'] ?? 50);
-        $length = $payload['articleLength'] ?? 'medium';
         $includeLists = $payload['includeLists'] ?? true;
         $includeTables = $payload['includeTables'] ?? false;
         $outline = $payload['outline'] ?? [];
@@ -27,70 +26,68 @@ class GenerateArticleService
         $additionalContext = $payload['additionalContext'] ?? '';
         $keyPoints = $payload['keyPoints'] ?? [];
 
-        // Build the Prompt Guidelines
-        $prompt = "Eres un redactor experto y periodista de un blog de alta autoridad. Redactarás un artículo final optimizado para SEO, formateado estrictamente en formato Markdown estándar.\n\n";
-
-        $prompt .= sprintf("**Principios editoriales que debes seguir:**\n");
-        $prompt .= sprintf("- estructura jerárquica clara (H1, H2, H3)\n");
-        $prompt .= sprintf("- introducción que contextualice el tema\n");
-        $prompt .= sprintf("- desarrollo progresivo del contenido\n");
-        $prompt .= sprintf("- uso de listas para mejorar escaneabilidad\n");
-        $prompt .= sprintf("- secciones conectadas de forma lógica\n");
-        $prompt .= sprintf("- conclusión que sintetice los puntos clave\n");
-        
-        $prompt .= sprintf("**Tema Principal y Título sugerido:** %s\n", $title);
-        $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
-        $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
-        $prompt .= "\n**Instrucción de Navegación (CRÍTICO):**\n";
-        $prompt .= "- Después de la introducción, incluye una 'Tabla de contenidos' colapsable usando las etiquetas HTML `<details open>` y `<summary>`. No añadas un encabezado Markdown (# o ##) para esta tabla, usa la etiqueta `<summary>` con el texto 'Tabla de contenidos'.\n";
-        $prompt .= "- Dentro del `<details>`, crea una lista Markdown de enlaces internos a todos los encabezados H2 del artículo (ej: `[Título de la sección](#titulo-de-la-sección)`).\n";
-
-        if (!empty(trim($additionalContext))) {
-            $prompt .= sprintf("**Contexto y directrices adicionales del redactor (sigue estas instrucciones con prioridad):** %s\n", $additionalContext);
-        }
-        
-        if (!empty($keyPoints)) {
-            $prompt .= sprintf("**Puntos clave que definieron la estructura:** %s\n", implode(', ', $keyPoints));
-        }
-
-        if (!empty($keywords)) {
-            $prompt .= sprintf("**Palabras/Conceptos Clave (SEO) a integrar de forma natural:** %s\n", implode(', ', $keywords));
-        }
-
-        // Configuration translation
+        // Configuration translation for tone
         $toneStr = "Neutral / Informativo";
         if ($tone < 30) $toneStr = "Formal, Profesional, y Corporativo.";
         if ($tone > 70) $toneStr = "Cercano, Amigable, y muy Conversacional.";
-        $prompt .= sprintf("**Tono del artículo:** %s\n", $toneStr);
 
-        $lengthStr = "Aproximadamente 700 palabras.";
-        if ($length === 'short') $lengthStr = "Breve y al grano. Aproximadamente 400 palabras.";
-        if ($length === 'long') $lengthStr = "Extenso y detallado. Más de 1000 palabras.";
-         $prompt .= sprintf("**Longitud objetivo:** %s\n", $lengthStr);
+        // Build the Prompt Guidelines (Unified SEO + Conversion + Structural)
+        $prompt = "Eres un **Estratega de Conversión SEO y Orientador Académico Senior** del equipo de NewsGen, especializado en el ecosistema educativo español (FPs, Certificados y Cursos Técnicos). Tu objetivo es transformar los esquemas técnicos en guías definitivas de alta autoridad que conviertan lectores en alumnos matriculados.\n\n";
 
-        if ($includeLists) $prompt .= "- Es fundamental incluir listas de viñetas o numeradas para desglose de información.\n";
-        if ($includeTables) $prompt .= "- Es fundamental emplear al menos una tabla Markdown para comparar o presentar datos de forma estructurada.\n";
+        $prompt .= "### I. FILOSOFÍA EDITORIAL Y CONTEXTO 2026 (BASE):\n";
+        $prompt .= "- **Actualización 2026-2027:** El contenido debe estar plenamente alineado con la **Nueva Ley de FP** (grados A-E, Dualidad intensiva) y los plazos de admisión vigentes.\n";
+        $prompt .= "- **Diferenciación Regional:** Al tratar fechas, becas o requisitos, distingue siempre entre la normativa estatal y las particularidades de las **Comunidades Autónomas** clave (Madrid, Cataluña, Andalucía, Comunidad Valenciana, etc.).\n";
+        $prompt .= sprintf("- **Tono Configurado:** %s. Actúa como un 'Career Coach' experto; evita el marketing vacío, ofrece asesoramiento técnico, empático y profesional.\n", $toneStr);
 
-        // Inject the strictly allowed outline
-        $prompt .= "\n**Estructura del Artículo (Sigue este índice exacto como encabezados principales):**\n";
+        $prompt .= "\n### II. ESTRUCTURA Y SEO AVANZADO (OBLIGATORIO):\n";
+        $prompt .= sprintf("- **Respuesta Directa (AEO):** Bajo el H1 principal, redacta un resumen de máximo 50 palabras que responda la duda central del usuario (para capturar AI Overviews y Snippets).\n");
+        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de la 'Respuesta Directa' y antes de la primera sección del esquema, incluye la tabla de contenidos colapsable usando estrictamente: `<details open><summary>Tabla de contenidos</summary>...lista de enlaces internos Markdown...</details>`. **No la repitas nunca en el cuerpo del texto ni crees un encabezado ## para ella.**\n";
+        $prompt .= "- **Autoridad E-E-A-T:** Cita fuentes oficiales (Ministerios, SEPE, BOE, portales regionales). Usa terminología precisa: **nota de corte**, **itinerarios formativos**, **unidades de competencia**.\n";
+        $prompt .= "- **Impacto y Empleabilidad:** Siempre que el tema lo permita, incluye datos de mercado laboral 2026 (sectores en auge, salarios medios previstos) para justificar el valor del curso o FP.\n";
+        $prompt .= "- **Comparativa Multizona:** Emplea al menos una **tabla Markdown** para comparar plazos, plazas o requisitos entre diferentes CCAA o modalidades.\n";
+
+        $prompt .= "\n### III. DIRECTRICES DE REDACCIÓN Y DATOS:\n";
+        $prompt .= sprintf("- **Título Principal:** %s\n", $title);
+        $prompt .= sprintf("- **Público Objetivo:** %s\n", $audience);
+        $prompt .= sprintf("- **Intención de Búsqueda:** %s\n", $searchIntent);
+        
+        if (!empty($keyPoints)) {
+            $prompt .= sprintf("- **Puntos Críticos a desarrollar:** %s\n", implode(', ', $keyPoints));
+        }
+
+        if (!empty($keywords)) {
+            $prompt .= sprintf("- **Palabras Clave SEO (integrar naturalmente):** %s\n", implode(', ', $keywords));
+        }
+
+        if (!empty(trim($additionalContext))) {
+            $prompt .= sprintf("- **Contexto Adicional (Prioridad):** %s\n", $additionalContext);
+        }
+
+        // Section Outline
+        $prompt .= "\n**IV. ESQUEMA DE SECCIONES (SIGUE ESTRICTAMENTE):**\n";
         foreach ($outline as $item) {
             $budget = $item['budget'] ?? 'medium';
-            $budgetInstr = "";
-            if ($budget === 'short') $budgetInstr = " (Breve y conciso)";
-            if ($budget === 'long') $budgetInstr = " (Extenso, profundo y detallado)";
-            
+            $budgetInstr = match($budget) {
+                'short' => " (Breve y conciso)",
+                'long' => " (Extenso, profundo y detallado)",
+                default => " (Extensión media)"
+            };
             $prompt .= sprintf("- %s%s\n", $item['text'] ?? 'Sección', $budgetInstr);
         }
 
-        // Integrate references into content if chosen
+        // Final Section
+        $prompt .= "\n**V. CIERRE E INTERACCIÓN:**\n";
+        $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' con 3-5 dudas sobre acceso, becas o modalidad online.\n";
+        $prompt .= "- **CTA Persuasivo:** Un párrafo final que invite al lector a solicitar información o reservar su plaza.\n";
+
         if (!empty($references)) {
-             $prompt .= "\n**Fuentes de Autoridad a integrar de forma natural como enlaces (Markdown links):**\n";
+             $prompt .= "\n**Fuentes de Referencia a integrar (Markdown links):**\n";
              foreach ($references as $ref) {
                  $prompt .= sprintf("- [%s](%s)\n", $ref['title'] ?? 'Referencia', $ref['url'] ?? '#');
              }
         }
 
-        $prompt .= "\n\nRedacta el contenido en español utilizando saltos de línea y Markdown válido.";
+        $prompt .= "\n\nRedacta el contenido completo en español utilizando Markdown válido.";
 
         // Direct call to Gemini WITHOUT schema constraints for free-form markdown response
         $models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];

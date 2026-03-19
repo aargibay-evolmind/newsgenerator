@@ -17,9 +17,9 @@ export const useArticleStore = defineStore('article', () => {
 
   // Step 2 State (Config)
   const toneValue = ref(0);
-  const articleLength = ref('medium');
   const includeLists = ref(true);
   const includeTables = ref(false);
+  const sectionCount = ref(7);
   
   // Step 2 State (Plan)
   const outlineList = ref<OutlineItem[]>([]);
@@ -35,6 +35,8 @@ export const useArticleStore = defineStore('article', () => {
       audience: audience.value,
       searchIntent: searchIntent.value,
       additionalContext: additionalContext.value,
+      tone: toneValue.value,
+      sectionCount: sectionCount.value,
       referenceUrls: scrapedReferences.value.map(r => r.url).concat(referenceUrls.value)
     };
   }
@@ -48,7 +50,6 @@ export const useArticleStore = defineStore('article', () => {
       searchIntent: searchIntent.value,
       additionalContext: additionalContext.value,
       tone: toneValue.value,
-      articleLength: articleLength.value,
       includeLists: includeLists.value,
       includeTables: includeTables.value,
       // Only send included items
@@ -68,9 +69,9 @@ export const useArticleStore = defineStore('article', () => {
     audience,
     searchIntent,
     toneValue,
-    articleLength,
     includeLists,
     includeTables,
+    sectionCount,
     outlineList,
     suggestedLinks,
     uploadedImages,

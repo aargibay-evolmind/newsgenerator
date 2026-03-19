@@ -9,7 +9,9 @@ import type {
   GenerateArticleRequest,
   GenerateArticleResponse,
   RegenerateSectionRequest,
-  RegenerateSectionResponse
+  RegenerateSectionResponse,
+  SaveArticleRequest,
+  SavedArticle
 } from '../types';
 
 export const ArticleAPI = {
@@ -41,5 +43,32 @@ export const ArticleAPI = {
     apiClient<RegenerateSectionResponse>('/regenerate-section', {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  saveArticle: (data: SaveArticleRequest) =>
+    apiClient<SavedArticle>('/articles', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  getSavedArticles: () =>
+    apiClient<SavedArticle[]>('/articles', {
+      method: 'GET'
+    }),
+
+  getSavedArticle: (id: string) =>
+    apiClient<SavedArticle>(`/articles/${id}`, {
+      method: 'GET'
+    }),
+
+  updateArticle: (id: string, data: SaveArticleRequest) =>
+    apiClient<SavedArticle>(`/articles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
+  deleteArticle: (id: string) =>
+    apiClient<{ message: string }>(`/articles/${id}`, {
+      method: 'DELETE'
     }),
 };
