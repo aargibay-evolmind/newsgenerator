@@ -5,7 +5,8 @@ namespace App\Service;
 class GenerateArticleService
 {
     public function __construct(
-        private readonly GeminiService $gemini
+        private readonly GeminiService $gemini,
+        private readonly KnowledgeBaseService $knowledgeBase
     ) {}
 
     /**
@@ -26,13 +27,16 @@ class GenerateArticleService
         $additionalContext = $payload['additionalContext'] ?? '';
         $keyPoints = $payload['keyPoints'] ?? [];
 
+        // LOAD RELEVANT COURSES (SMART FILTERING)
+        $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
+
         // Configuration translation for tone
         $toneStr = "Neutral / Informativo";
         if ($tone < 30) $toneStr = "Formal, Profesional, y Corporativo.";
         if ($tone > 70) $toneStr = "Cercano, Amigable, y muy Conversacional.";
 
         // Build the Prompt Guidelines (Unified SEO + Conversion + Structural)
-        $prompt = "Eres un **Estratega de Conversión SEO y Orientador Académico Senior** del equipo de NewsGen, especializado en el ecosistema educativo español (FPs, Certificados y Cursos Técnicos). Tu objetivo es transformar los esquemas técnicos en guías definitivas de alta autoridad que conviertan lectores en alumnos matriculados.\n\n";
+        $prompt = "Eres un **Estratega de Conversión SEO y Orientador Académico Senior** del equipo de ArticleMind, especializado en el ecosistema educativo español (FPs, Certificados y Cursos Técnicos). Tu objetivo es transformar los esquemas técnicos en guías definitivas de alta autoridad que conviertan lectores en alumnos matriculados.\n\n";
 
         $prompt .= "### I. FILOSOFÍA EDITORIAL Y CONTEXTO 2026 (BASE):\n";
         $prompt .= "- **Actualización 2026-2027:** El contenido debe estar plenamente alineado con la **Nueva Ley de FP** (grados A-E, Dualidad intensiva) y los plazos de admisión vigentes.\n";
@@ -78,8 +82,18 @@ class GenerateArticleService
         // Final Section
         $prompt .= "\n**V. CIERRE E INTERACCIÓN (ORIENTADO A VENTA):**\n";
         $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' sobre acceso, becas o modalidad online.\n";
-        $prompt .= "- **CTA Contextual:** En las secciones de mayor valor (salarios o requisitos), incluye un puente natural como: '[Solicita información sobre este itinerario aquí](https://davante.es/contacto)'.\n";
-        $prompt .= "- **Cierre Persuasivo:** Un párrafo final potente que resalte la urgencia de titularse oficialmente para asegurar el éxito en 2026.\n";
+
+        if (!empty($relevantCourses)) {
+            $prompt .= "- **CTA FINAL (OBLIGATORIO):** En la sección de 'Siguientes Pasos' o en el párrafo final de 'Cierre', incluye de forma explícita y destacada el enlace al curso principal utilizando **exactamente su nombre** como texto del enlace. Por ejemplo: '[Nombre del Curso](URL)'.\n";
+            $prompt .= "- **CURSOS SELECCIONADOS:**\n";
+            foreach ($relevantCourses as $course) {
+                $prompt .= sprintf("  - %s: %s\n", $course['name'], $course['url']);
+            }
+        } else {
+            $prompt .= "- **CTA Contextual:** En las secciones de mayor valor (salarios o requisitos), incluye un puente natural como: '[Solicita información sobre este itinerario aquí](https://davante.es/contacto)'.\n";
+        }
+
+        $prompt .= "- **Cierre Persuasivo:** Un párrafo final potente que resalte la urgencia de titularse oficialmente para asegurar el éxito en 2026 e incluya la llamada a la acción al curso mencionado arriba.\n";
 
         $prompt .= "\n**VI. BLOQUE DE METADATOS (OPTIMIZADO PARA CTR - AL FINAL):**\n";
         $prompt .= "Tras finalizar el artículo, añade el bloque delimitado por ---METADATA---. Maximiza el CTR en buscadores usando palabras de poder y corchetes.\n";

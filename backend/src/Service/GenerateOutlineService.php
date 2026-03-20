@@ -5,7 +5,8 @@ namespace App\Service;
 class GenerateOutlineService
 {
     public function __construct(
-        private readonly GeminiService $gemini
+        private readonly GeminiService $gemini,
+        private readonly KnowledgeBaseService $knowledgeBase
     ) {}
 
     /**
@@ -20,8 +21,11 @@ class GenerateOutlineService
      */
     public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7): array
     {
+        // LOAD RELEVANT COURSES FOR CONTEXTUAL OUTLINE
+        $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
+
         $prompt = sprintf(
-            "Actúa como el **Arquitecto Jefe y Estratega de Contenido Académico** de NewsGen. Tu misión es diseñar la estructura de una guía definitiva titulada: '%s'.\n",
+            "Actúa como el **Arquitecto Jefe y Estratega de Contenido Académico** de ArticleMind. Tu misión es diseñar la estructura de una guía definitiva titulada: '%s'.\n",
             $title
         );
         $prompt .= "Buscas atraer a potenciales alumnos interesados en formación (FP, cursos, certificados) en España.\n";
@@ -49,9 +53,16 @@ Requisitos del Esquema:
 1. Diseña un índice (outline) con exactamente {$sectionCount} encabezados muy descriptivos y orientados a la conversión. Devuélvelos en orden lógico.
 2. **NUNCA incluyas** encabezados para la 'Tabla de contenidos', 'Introducción' o 'Resumen AEO', ya que el sistema los inyecta automáticamente.
 3. El esquema debe priorizar la empleabilidad en España 2026 (sueldos, demanda real, requisitos oficiales).
-4. **Obligatorio:** Incluye una sección final de 'Guía de Matriculación' o 'Siguientes Pasos' que invite a la acción.
+4. **Obligatorio:** Incluye una sección final titulada 'Pasos para empezar tu formación' o similar, diseñada para cerrar con autoridad e invitar a la acción.
 5. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, BOE o portales oficiales) relevantes para el tema.
+
+**IMPORTANTE: Cursos Disponibles en la Academia:**
+Considera incluir secciones que faciliten la integración natural de estos cursos específicos en el artículo:
 ";
+        foreach ($relevantCourses as $course) {
+            $prompt .= sprintf("- %s\n", $course['name']);
+        }
+        $prompt .= "\n";
 
         $schema = [
             'type' => 'OBJECT', // TYPE_OBJECT from the specification
@@ -116,6 +127,16 @@ Requisitos del Esquema:
                         'included' => true
                     ];
                 }
+            }
+
+            // APPEND RELEVANT COURSES FROM ACADEMY
+            foreach ($relevantCourses as $index => $course) {
+                $responseData['suggestedLinks'][] = [
+                    'id' => time() + 200 + $index,
+                    'title' => "[Curso] " . $course['name'],
+                    'url' => $course['url'],
+                    'included' => true
+                ];
             }
 
             return $responseData;

@@ -11,7 +11,7 @@ class RegenerateSectionService
     public function regenerate(string $articleTitle, string $sectionHeading, string $currentContent, string $context = '', string $guidelines = ''): string
     {
         $prompt = sprintf(
-            "Eres un **Estratega de Contenido Senior** de NewsGen. Tu tarea es reescribir con máxima autoridad y precisión la sección \"%s\" del artículo \"%s\".\n\n",
+            "Eres un **Estratega de Contenido Senior** de ArticleMind. Tu tarea es reescribir con máxima autoridad y precisión la sección \"%s\" del artículo \"%s\".\n\n",
             $sectionHeading,
             $articleTitle
         );

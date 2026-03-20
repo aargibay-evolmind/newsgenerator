@@ -17,9 +17,9 @@ const activeLink = computed(() => {
       <div class="relative flex justify-between items-center h-16">
         <!-- Logo (left) -->
         <router-link to="/" class="flex items-center gap-3 shrink-0 group">
-          <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary flex items-center justify-center text-white font-bold group-hover:scale-105 transition-transform">N</div>
+          <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary flex items-center justify-center text-white font-bold group-hover:scale-105 transition-transform">A</div>
           <span class="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary tracking-tight">
-            NewsGen
+            ArticleMind
           </span>
         </router-link>
 
