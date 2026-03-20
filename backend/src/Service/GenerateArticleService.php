@@ -76,20 +76,21 @@ class GenerateArticleService
         }
 
         // Final Section
-        $prompt .= "\n**V. CIERRE E INTERACCIÓN:**\n";
-        $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' con 3-5 dudas sobre acceso, becas o modalidad online.\n";
-        $prompt .= "- **CTA Persuasivo:** Un párrafo final que invite al lector a solicitar información o reservar su plaza.\n";
+        $prompt .= "\n**V. CIERRE E INTERACCIÓN (ORIENTADO A VENTA):**\n";
+        $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' sobre acceso, becas o modalidad online.\n";
+        $prompt .= "- **CTA Contextual:** En las secciones de mayor valor (salarios o requisitos), incluye un puente natural como: '[Solicita información sobre este itinerario aquí](https://davante.es/contacto)'.\n";
+        $prompt .= "- **Cierre Persuasivo:** Un párrafo final potente que resalte la urgencia de titularse oficialmente para asegurar el éxito en 2026.\n";
 
-        $prompt .= "\n**VI. BLOQUE DE METADATOS (CRÍTICO - AL FINAL):**\n";
-        $prompt .= "Tras finalizar el artículo, añade obligatoriamente el siguiente bloque delimitado por ---METADATA---. Cada campo debe seguir el formato 'Nombre: Valor'.\n";
+        $prompt .= "\n**VI. BLOQUE DE METADATOS (OPTIMIZADO PARA CTR - AL FINAL):**\n";
+        $prompt .= "Tras finalizar el artículo, añade el bloque delimitado por ---METADATA---. Maximiza el CTR en buscadores usando palabras de poder y corchetes.\n";
         $prompt .= "---METADATA---\n";
-        $prompt .= "Friendly URL: [slug-seo-limpio-y-en-minusculas]\n";
-        $prompt .= "Meta title: [Título SEO de entre 50 y 60 caracteres]\n";
-        $prompt .= "Meta-keywords: [5-10 palabras clave separadas por comas]\n";
-        $prompt .= "Meta description: [Resumen atractivo para buscadores de máx 155 caracteres]\n";
-        $prompt .= "Short text: [Un gancho o entradilla de 2-3 frases para listados]\n";
-        $prompt .= "Email title: [Asunto sugerido para el email a suscritos]\n";
-        $prompt .= "Email text: [Cuerpo del email breve y directo invitando a leer la noticia]\n";
+        $prompt .= "Friendly URL: [slug-seo-corto-y-directo]\n";
+        $prompt .= "Meta title: [Título con números o corchetes, ej: 'Curso X 2026 [Guía Oficial]']\n";
+        $prompt .= "Meta-keywords: [5-10 términos clave]\n";
+        $prompt .= "Meta description: [Resumen con beneficio inmediato y llamada a la acción]\n";
+        $prompt .= "Short text: [Gancho de 2 frases con promesa de empleabilidad]\n";
+        $prompt .= "Email title: [Asunto magnético, ej: '¿Sabías que el sector X paga Y€?']\n";
+        $prompt .= "Email text: [Texto breve resaltando un dato impactante e invitando a leer]\n";
         $prompt .= "---METADATA---\n\n";
 
         if (!empty($references)) {

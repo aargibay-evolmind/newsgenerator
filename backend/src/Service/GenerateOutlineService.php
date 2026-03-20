@@ -48,8 +48,9 @@ class GenerateOutlineService
 Requisitos del Esquema:
 1. Diseña un índice (outline) con exactamente {$sectionCount} encabezados muy descriptivos y orientados a la conversión. Devuélvelos en orden lógico.
 2. **NUNCA incluyas** encabezados para la 'Tabla de contenidos', 'Introducción' o 'Resumen AEO', ya que el sistema los inyecta automáticamente.
-3. El esquema debe responder a las necesidades del sector educativo español en 2026 (empleabilidad, requisitos oficiales, ventajas del curso).
-4. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, portales de empleo reales o Wikipedia) relevantes para el tema.
+3. El esquema debe priorizar la empleabilidad en España 2026 (sueldos, demanda real, requisitos oficiales).
+4. **Obligatorio:** Incluye una sección final de 'Guía de Matriculación' o 'Siguientes Pasos' que invite a la acción.
+5. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, BOE o portales oficiales) relevantes para el tema.
 ";
 
         $schema = [

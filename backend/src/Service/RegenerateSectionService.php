@@ -25,6 +25,7 @@ class RegenerateSectionService
 
         $prompt .= "Instrucciones de Redacción:\n";
         $prompt .= "- Mejora el estilo siguiendo un tono experto, orientador y profesional (SEO 2026/2027).\n";
+        $prompt .= "- **Enfoque en Conversión:** Si la sección lo permite, resalta beneficios laborales o el valor de la formación oficial.\n";
         $prompt .= "- Integra datos, beneficios o referencias oficiales si el contexto lo permite.\n";
         $prompt .= "- Devuelve solo el Markdown del cuerpo de la sección, SIN el título del encabezado.\n";
         $prompt .= "- Prohibido incluir notas, introducciones o textos fuera del contenido final.\n";

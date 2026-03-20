@@ -15,9 +15,9 @@ class SuggestTopicsService
     public function suggest(string $topic): array
     {
         $prompt = empty(trim($topic))
-            ? "Eres un **Estratega de Crecimiento Académico en España**. Sugiere exactamente 3 titulares de noticias o guías de formación que estén marcando tendencia ahora mismo (nuevas convocatorias de FP, profesiones más buscadas en 2026 o formación con alta empleabilidad). Deben ser magnéticos, ultra-clicables y enfocados a personas buscando mejorar su carrera profesional. Solo devuelve los conceptos/títulos."
+            ? "Eres un **Estratega de Crecimiento Académico en España**. Sugiere exactamente 3 titulares de noticias o guías de formación que estén marcando tendencia ahora mismo (nuevas convocatorias de FP, profesiones con salarios >30k€ en 2026 o formación con empleabilidad garantizada). Deben ser magnéticos, ultra-clicables y resaltar el beneficio económico o profesional inmediato. Solo devuelve los conceptos/títulos."
             : sprintf(
-                "Eres un **Estratega SEO Educativo**. Sugiere exactamente 3 titulares competitivos y altamente atractivos para un artículo sobre: '%s'. Deben enfocarse en la resolución de dudas críticas, la obtención de títulos oficiales o el éxito laboral 2026. Diseñados para captar el interés inmediato del potencial alumno. Solo devuelve los conceptos/títulos.",
+                "Eres un **Estratega SEO Educativo**. Sugiere exactamente 3 titulares competitivos y altamente atractivos para un artículo sobre: '%s'. Deben enfocarse en la resolución de dudas críticas, el aumento salarial por titulación oficial o el éxito laboral 2026. Diseñados para convertir lectores en potenciales alumnos. Solo devuelve los conceptos/títulos.",
                 $topic
             );
 
