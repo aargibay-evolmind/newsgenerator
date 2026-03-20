@@ -41,7 +41,7 @@ class GenerateArticleService
 
         $prompt .= "\n### II. ESTRUCTURA Y SEO AVANZADO (OBLIGATORIO):\n";
         $prompt .= sprintf("- **Respuesta Directa (AEO):** Bajo el H1 principal, redacta un resumen de máximo 50 palabras que responda la duda central del usuario (para capturar AI Overviews y Snippets).\n");
-        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de la 'Respuesta Directa' y antes de la primera sección del esquema, incluye la tabla de contenidos colapsable usando estrictamente: `<details open><summary>Tabla de contenidos</summary>...lista de enlaces internos Markdown...</details>`. **No la repitas nunca en el cuerpo del texto ni crees un encabezado ## para ella.**\n";
+        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de la 'Respuesta Directa' y antes de la primera sección del esquema, incluye la tabla de contenidos colapsable usando estrictamente: `<details open><summary>Tabla de contenidos</summary>\n\n- [Texto del enlace](#ancla-del-encabezado)\n- ...\n\n</details>`. Asegúrate de que los enlaces sean una **lista con viñetas** Markdown válida y que cada enlace apunte al ID correcto del encabezado. **No la repitas nunca en el cuerpo del texto ni crees un encabezado ## para ella.**\n";
         $prompt .= "- **Autoridad E-E-A-T:** Cita fuentes oficiales (Ministerios, SEPE, BOE, portales regionales). Usa terminología precisa: **nota de corte**, **itinerarios formativos**, **unidades de competencia**.\n";
         $prompt .= "- **Impacto y Empleabilidad:** Siempre que el tema lo permita, incluye datos de mercado laboral 2026 (sectores en auge, salarios medios previstos) para justificar el valor del curso o FP.\n";
         $prompt .= "- **Comparativa Multizona:** Emplea al menos una **tabla Markdown** para comparar plazos, plazas o requisitos entre diferentes CCAA o modalidades.\n";
@@ -79,6 +79,18 @@ class GenerateArticleService
         $prompt .= "\n**V. CIERRE E INTERACCIÓN:**\n";
         $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' con 3-5 dudas sobre acceso, becas o modalidad online.\n";
         $prompt .= "- **CTA Persuasivo:** Un párrafo final que invite al lector a solicitar información o reservar su plaza.\n";
+
+        $prompt .= "\n**VI. BLOQUE DE METADATOS (CRÍTICO - AL FINAL):**\n";
+        $prompt .= "Tras finalizar el artículo, añade obligatoriamente el siguiente bloque delimitado por ---METADATA---. Cada campo debe seguir el formato 'Nombre: Valor'.\n";
+        $prompt .= "---METADATA---\n";
+        $prompt .= "Friendly URL: [slug-seo-limpio-y-en-minusculas]\n";
+        $prompt .= "Meta title: [Título SEO de entre 50 y 60 caracteres]\n";
+        $prompt .= "Meta-keywords: [5-10 palabras clave separadas por comas]\n";
+        $prompt .= "Meta description: [Resumen atractivo para buscadores de máx 155 caracteres]\n";
+        $prompt .= "Short text: [Un gancho o entradilla de 2-3 frases para listados]\n";
+        $prompt .= "Email title: [Asunto sugerido para el email a suscritos]\n";
+        $prompt .= "Email text: [Cuerpo del email breve y directo invitando a leer la noticia]\n";
+        $prompt .= "---METADATA---\n\n";
 
         if (!empty($references)) {
              $prompt .= "\n**Fuentes de Referencia a integrar (Markdown links):**\n";

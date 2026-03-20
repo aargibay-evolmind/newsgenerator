@@ -5,8 +5,8 @@ import { useRoute } from 'vue-router';
 const route = useRoute();
 
 const activeLink = computed(() => {
-  if (route.path === '/') return 'inicio';
-  if (route.path.startsWith('/generador')) return 'generador';
+  if (route.path === '/') return 'panel';
+  if (route.path.startsWith('/generador')) return 'nuevo';
   return '';
 });
 </script>
@@ -28,16 +28,16 @@ const activeLink = computed(() => {
           <router-link 
             to="/" 
             class="text-xs font-bold transition-colors"
-            :class="activeLink === 'inicio' ? 'text-primary' : 'text-secondary hover:text-primary'"
+            :class="activeLink === 'panel' ? 'text-primary' : 'text-secondary hover:text-primary'"
           >
-            Inicio
+            Panel de Control
           </router-link>
           <router-link 
             to="/generador" 
             class="text-xs font-bold transition-colors"
-            :class="activeLink === 'generador' ? 'text-primary' : 'text-secondary hover:text-primary'"
+            :class="activeLink === 'nuevo' ? 'text-primary' : 'text-secondary hover:text-primary'"
           >
-            Generador
+            Nuevo Artículo
           </router-link>
           <div class="h-4 w-px bg-secondary/10 mx-1"></div>
           <router-link 

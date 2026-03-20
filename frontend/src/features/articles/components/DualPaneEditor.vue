@@ -12,6 +12,15 @@ const props = defineProps<{
   savePrompt?: string
   backPrompt?: string
   hideBack?: boolean
+  metadata?: {
+    friendlyUrl: string;
+    metaTitle: string;
+    metaKeywords: string;
+    metaDescription: string;
+    shortText: string;
+    emailTitle: string;
+    emailText: string;
+  }
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +54,32 @@ const isReviewingRegen = ref(false)
 const showSaveDropdown = ref(false)
 const markdownEditor = ref<HTMLTextAreaElement | null>(null)
 const editorType = ref<'markdown' | 'visual'>('markdown')
+
+const showMetadata = ref(false)
+const copiedField = ref<string | null>(null)
+
+function copyField(text: string, fieldName: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      handleFieldCopySuccess(fieldName)
+    }).catch(() => {
+      fallbackCopyTextToClipboard(text)
+      handleFieldCopySuccess(fieldName)
+    })
+  } else {
+    fallbackCopyTextToClipboard(text)
+    handleFieldCopySuccess(fieldName)
+  }
+}
+
+function handleFieldCopySuccess(fieldName: string) {
+  copiedField.value = fieldName
+  setTimeout(() => {
+    if (copiedField.value === fieldName) {
+      copiedField.value = null
+    }
+  }, 2000)
+}
 
 function downloadArticle(format: 'markdown' | 'html') {
   let content = generatedMarkdown.value
@@ -270,7 +305,7 @@ onUnmounted(() => {
             >
               <svg v-if="isSaving" class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
               <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-              {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar Noticia') }}
+              {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar Artículo') }}
             </button>
             <div class="px-3 py-2 border-b border-t border-secondary/5 mb-1 mt-1">
               <span class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest">Descargar como</span>
@@ -298,15 +333,146 @@ onUnmounted(() => {
       </div>
 
       <div class="flex items-center gap-3">
-        <router-link to="/mis-noticias" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+        <router-link to="/" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          Historial
+          Panel de Control
         </router-link>
       </div>
     </div>
 
     <!-- Dual Pane Workplace Area -->
-    <div class="flex-1 flex items-stretch overflow-hidden min-h-0">
+    <div class="flex-1 flex flex-col overflow-hidden min-h-0">
+      
+      <!-- Metadata Dashboard Collapsible -->
+      <div v-if="metadata && (metadata.friendlyUrl || metadata.metaTitle)" class="border-b border-secondary/10 bg-white shrink-0">
+        <button 
+          @click="showMetadata = !showMetadata"
+          class="w-full px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors group"
+        >
+          <div class="flex items-center gap-3">
+            <div class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div class="text-left">
+              <h3 class="text-xs font-bold text-text uppercase tracking-wider">Metadatos Generados (SEO & Email)</h3>
+              <p class="text-[10px] text-secondary">Slug, títulos SEO, descripción y contenido para suscriptores</p>
+            </div>
+          </div>
+          <svg 
+            class="h-5 w-5 text-secondary transition-transform duration-300"
+            :class="{ 'rotate-180': showMetadata }"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        <transition
+          enter-active-class="transition-all duration-300 ease-in-out"
+          enter-from-class="max-h-0 opacity-0"
+          enter-to-class="max-h-[500px] opacity-100"
+          leave-active-class="transition-all duration-200 ease-in-out"
+          leave-from-class="max-h-[500px] opacity-100"
+          leave-to-class="max-h-0 opacity-0"
+        >
+          <div v-if="showMetadata" class="overflow-hidden bg-slate-50/50 border-t border-secondary/5">
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[400px] overflow-y-auto custom-scrollbar">
+              
+              <!-- SEO Section -->
+              <div class="space-y-4">
+                <h4 class="text-[10px] font-black text-secondary/40 uppercase tracking-widest border-b border-secondary/10 pb-2">SEO & URL</h4>
+                
+                <!-- Friendly URL -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Friendly URL</label>
+                    <button @click="copyField(metadata.friendlyUrl, 'url')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'url' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs font-mono text-text break-all">{{ metadata.friendlyUrl }}</div>
+                </div>
+
+                <!-- Meta Title -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Title ({{ metadata.metaTitle.length }} chars)</label>
+                    <button @click="copyField(metadata.metaTitle, 'title')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'title' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed italic">{{ metadata.metaTitle }}</div>
+                </div>
+
+                <!-- Meta Keywords -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Keywords</label>
+                    <button @click="copyField(metadata.metaKeywords, 'keywords')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'keywords' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.metaKeywords }}</div>
+                </div>
+              </div>
+
+              <!-- Content & Email Section -->
+              <div class="space-y-4">
+                 <h4 class="text-[10px] font-black text-secondary/40 uppercase tracking-widest border-b border-secondary/10 pb-2">Engagement & Newsletter</h4>
+
+                 <!-- Meta Description -->
+                 <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Description</label>
+                    <button @click="copyField(metadata.metaDescription, 'desc')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'desc' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.metaDescription }}</div>
+                </div>
+
+                <!-- Short Text -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Short Text (Home/Listings)</label>
+                    <button @click="copyField(metadata.shortText, 'short')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'short' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.shortText }}</div>
+                </div>
+
+                <!-- Email Title -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Email Subject</label>
+                    <button @click="copyField(metadata.emailTitle, 'emailTitle')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'emailTitle' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs font-bold text-text leading-relaxed">{{ metadata.emailTitle }}</div>
+                </div>
+
+                <!-- Email Text -->
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Email Body</label>
+                    <button @click="copyField(metadata.emailText, 'emailText')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                      {{ copiedField === 'emailText' ? '¡Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed whitespace-pre-wrap">{{ metadata.emailText }}</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </transition>
+      </div>
+
+      <div class="flex-1 flex items-stretch overflow-hidden min-h-0">
       
       <!-- EDITOR PANE -->
       <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-secondary/10 bg-slate-50">
@@ -453,6 +619,7 @@ onUnmounted(() => {
         </div>
       </div>
 
+      </div>
     </div>
   </div>
 </template>

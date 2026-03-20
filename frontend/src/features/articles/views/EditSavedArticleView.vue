@@ -13,10 +13,22 @@ const { data: article, isLoading, isError } = useSavedArticle(articleId)
 const { mutateAsync: updateArticleMutation, isPending: isUpdating } = useUpdateArticle()
 
 const generatedMarkdown = ref('')
+const articleMetadata = ref({
+  friendlyUrl: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
+  shortText: '',
+  emailTitle: '',
+  emailText: ''
+})
 
 watch(article, (newArticle) => {
   if (newArticle?.data?.markdown) {
     generatedMarkdown.value = newArticle.data.markdown
+  }
+  if (newArticle?.data?.metadata) {
+    articleMetadata.value = { ...newArticle.data.metadata }
   }
 }, { immediate: true })
 
@@ -31,14 +43,16 @@ async function handleSave() {
       data: {
         title: article.value.title,
         data: {
-          markdown: generatedMarkdown.value
+          ...article.value.data,
+          markdown: generatedMarkdown.value,
+          metadata: articleMetadata.value
         }
       }
     });
-    successMessage.value = "✅ Cambios guardados correctamente.";
+    successMessage.value = "✅ Artículo guardado correctamente.";
     setTimeout(() => { successMessage.value = null; }, 4000);
   } catch (error) {
-    errorMessage.value = "❌ Error al guardar los cambios.";
+    errorMessage.value = "❌ Error al guardar el artículo.";
     setTimeout(() => { errorMessage.value = null; }, 5000);
   }
 }
@@ -64,7 +78,7 @@ function handleBack() {
       <!-- Error State -->
       <div v-else-if="isError || !article" class="flex-1 flex justify-center items-center">
         <div class="bg-red-50 p-6 rounded-2xl shadow-xl border border-red-200 text-red-600 flex items-center gap-3">
-          <span class="font-bold">❌ Error cargando la noticia.</span>
+          <span class="font-bold">❌ Error cargando el artículo.</span>
           <button @click="router.push('/')" class="px-3 py-1.5 bg-white rounded-lg border border-red-200 hover:bg-red-100 transition-colors text-xs font-bold">Volver</button>
         </div>
       </div>
@@ -75,6 +89,7 @@ function handleBack() {
         v-model="generatedMarkdown"
         :title="article.title"
         :is-saving="isUpdating"
+        :metadata="articleMetadata"
         save-prompt="Guardar Cambios"
         back-prompt="Volver"
         @save="handleSave"

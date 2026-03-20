@@ -16,7 +16,7 @@ function goToArticle(id: string) {
 }
 
 function handleDelete(id: string) {
-  if (confirm('¿Estás seguro de que quieres eliminar esta noticia?')) {
+  if (confirm('¿Estás seguro de que quieres eliminar este artículo?')) {
     deleteArticle(id);
   }
 }
@@ -70,7 +70,7 @@ function getToneLabel(val: number) {
       <!-- Header Section -->
       <div class="mb-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 class="text-4xl font-black text-slate-900 tracking-tighter italic">Tu Panel de Control</h1>
+          <h1 class="text-4xl font-black text-slate-900 tracking-tighter italic">Panel de Control</h1>
           <p class="text-sm text-slate-500 mt-2 font-medium">Gestiona tu estrategia de contenidos y artículos generados.</p>
         </div>
         
@@ -81,7 +81,7 @@ function getToneLabel(val: number) {
           <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4" />
           </svg>
-          Nueva Noticia
+          Nuevo Artículo
         </router-link>
       </div>
 
@@ -169,7 +169,7 @@ function getToneLabel(val: number) {
         <h3 class="text-2xl font-black text-slate-900 mb-2">Empieza a crear hoy</h3>
         <p class="text-slate-500 font-medium mb-8 max-w-sm mx-auto">Tu repositorio de noticias está vacío. Usa nuestra IA de vanguardia para generar contenido académico imparable.</p>
         <router-link to="/generador" class="inline-flex items-center gap-2 px-10 py-5 bg-primary text-white text-sm font-black rounded-2xl hover:bg-primary/90 transition-all shadow-xl shadow-primary/20">
-          Generar mi primer articulo
+          Generar mi primer artículo
         </router-link>
       </div>
 
@@ -206,7 +206,7 @@ function getToneLabel(val: number) {
               <button 
                 @click.stop="handleDelete(article.id)"
                 class="absolute top-6 right-6 p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                title="Eliminar noticia"
+                title="Eliminar artículo"
               >
                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

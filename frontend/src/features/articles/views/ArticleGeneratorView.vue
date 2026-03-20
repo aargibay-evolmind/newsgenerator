@@ -43,6 +43,54 @@ const successMessage = ref<string | null>(null)
 const currentStep = ref(1)
 const suggestedTopics = ref<string[]>([])
 
+interface ArticleMetadata {
+  friendlyUrl: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  shortText: string;
+  emailTitle: string;
+  emailText: string;
+}
+
+const articleMetadata = ref<ArticleMetadata>({
+  friendlyUrl: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
+  shortText: '',
+  emailTitle: '',
+  emailText: ''
+})
+
+function parseMetadataBlock(text: string) {
+  const lines = text.split('\n');
+  const metadata: any = {};
+  
+  const mapping: Record<string, keyof ArticleMetadata> = {
+    'Friendly URL': 'friendlyUrl',
+    'Meta title': 'metaTitle',
+    'Meta-keywords': 'metaKeywords',
+    'Meta description': 'metaDescription',
+    'Short text': 'shortText',
+    'Email title': 'emailTitle',
+    'Email text': 'emailText'
+  };
+
+  lines.forEach(line => {
+    const [key, ...valueParts] = line.split(':');
+    if (key && valueParts.length > 0) {
+      const trimmedKey = key.trim();
+      const value = valueParts.join(':').trim();
+      if (mapping[trimmedKey]) {
+        metadata[mapping[trimmedKey]] = value;
+      }
+    }
+  });
+
+  return metadata as ArticleMetadata;
+}
+
 async function handleSuggestTopics() {
   try {
     const data = await suggestTopics({ title: blogTitle.value })
@@ -190,20 +238,21 @@ async function saveArticleToDb() {
 
   try {
     await saveArticleMutation({
-      title: blogTitle.value.trim() || 'Noticia Sin Título',
+      title: blogTitle.value.trim() || 'Artículo Sin Título',
       data: {
         markdown: generatedMarkdown.value,
         tone: toneValue.value,
         keywords: [...tags.value],
         readingTime,
         audience: audience.value,
-        searchIntent: searchIntent.value
+        searchIntent: searchIntent.value,
+        metadata: articleMetadata.value
       }
     });
-    successMessage.value = "✅ Noticia guardada correctamente.";
+    successMessage.value = "✅ Artículo guardado correctamente.";
     setTimeout(() => { successMessage.value = null }, 4000);
   } catch (error) {
-    errorMessage.value = "❌ Error al guardar la noticia.";
+    errorMessage.value = "❌ Error al guardar el artículo.";
     setTimeout(() => { errorMessage.value = null }, 5000);
   }
 }
@@ -261,9 +310,26 @@ async function handleGenerateArticle() {
   
   try {
     const response = await generateArticle(store.getGenerateArticlePayload())
-    // @ts-ignore Since mocked preview uses statically written markdown, replace with real data.
-    // fakeArticle is read-only constant block originally, so we redefine viewing context or simply overwrite string logic via pinia later. Let's do a fast ref.
-    generatedMarkdown.value = response.markdown;
+    
+    // Split metadata from markdown
+    const parts = response.markdown.split('---METADATA---');
+    if (parts.length >= 2) {
+      generatedMarkdown.value = parts[0].trim();
+      articleMetadata.value = parseMetadataBlock(parts[1]);
+    } else {
+      generatedMarkdown.value = response.markdown;
+      // Reset metadata if not found
+      articleMetadata.value = {
+        friendlyUrl: '',
+        metaTitle: '',
+        metaKeywords: '',
+        metaDescription: '',
+        shortText: '',
+        emailTitle: '',
+        emailText: ''
+      };
+    }
+    
     goNext(3);
   } catch (error: any) {
      console.error("Failed to generate final article", error)
@@ -313,12 +379,12 @@ function processImageFile(file: File) {
 }
 
 function deleteImage(id: string) {
-  uploadedImages.value = uploadedImages.value.filter(img => img.id !== id)
+  uploadedImages.value = (uploadedImages.value || []).filter(img => img.id !== id)
 }
 
 function insertImage(img: { name: string, data: string }) {
   const markdown = `\n![${img.name}](${img.data})\n`
-  generatedMarkdown.value += markdown
+  generatedMarkdown.value = (generatedMarkdown.value || '') + markdown
 }
 
 // Global scroll lock for Step 3 - Force absolute height and overflow hidden
@@ -382,12 +448,14 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="successMessage" class="fixed top-36 right-4 z-50 max-w-sm bg-white border-l-4 border-green-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3">
-        <svg class="h-5 w-5 text-green-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>
-        <div class="flex-1">
-          <p class="text-sm font-medium text-slate-800">{{ successMessage }}</p>
+      <div v-if="successMessage" class="fixed top-20 right-4 z-[60] max-w-sm w-full bg-white border-l-4 border-green-500 rounded-lg shadow-2xl p-4 flex items-start gap-4 ring-1 ring-black/5">
+        <div class="rounded-full bg-green-100 p-1 shrink-0 mt-0.5">
+          <svg class="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
         </div>
-        <button @click="successMessage = null" class="text-slate-400 hover:text-slate-600">
+        <div class="flex-1 w-0">
+          <p class="text-sm font-semibold text-slate-900 leading-snug">{{ successMessage }}</p>
+        </div>
+        <button @click="successMessage = null" class="shrink-0 text-slate-400 hover:text-slate-500 hover:bg-slate-100 p-1 rounded-md transition-colors">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
         </button>
       </div>
@@ -421,7 +489,7 @@ onUnmounted(() => {
                 
                 <!-- Quick Start Title -->
                 <div>
-                  <label for="blog-title" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Título de la Noticia</label>
+                  <label for="blog-title" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Título del Artículo</label>
                   <input
                     id="blog-title"
                     v-model="blogTitle"
@@ -550,7 +618,7 @@ onUnmounted(() => {
                         @keydown.enter.prevent="handleScrape"
                         type="text" 
                         class="block w-full border-0 py-3 pl-10 pr-4 text-text placeholder:text-secondary/40 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
-                        placeholder="https://boe.es/noticia-importante..." 
+                        placeholder="https://boe.es/articulo-importante..." 
                       />
                     </div>
                     <button 
@@ -875,6 +943,7 @@ onUnmounted(() => {
           v-model="generatedMarkdown"
           :title="blogTitle"
           :is-saving="isSavingArticle"
+          :metadata="articleMetadata"
           @save="saveArticleToDb"
           @back="goNext(2)"
         />
