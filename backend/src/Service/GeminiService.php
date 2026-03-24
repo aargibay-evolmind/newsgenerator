@@ -108,4 +108,42 @@ class GeminiService
 
         throw new \Exception('Failed to generate embedding from Gemini API.');
     }
+
+    /**
+     * @param array<string> $texts
+     * @param string $model
+     * @return array<array<float>>
+     */
+    public function getBatchEmbeddings(array $texts, string $model = 'text-embedding-004'): array
+    {
+        $url = sprintf('https://generativelanguage.googleapis.com/v1beta/models/%s:batchEmbedContents?key=%s', $model, $this->geminiApiKey);
+
+        $requests = [];
+        foreach ($texts as $text) {
+            $requests[] = [
+                'model' => 'models/' . $model,
+                'content' => [
+                    'parts' => [
+                        ['text' => $text]
+                    ]
+                ]
+            ];
+        }
+
+        $response = $this->httpClient->request('POST', $url, [
+            'json' => ['requests' => $requests],
+            'headers' => [
+                'Content-Type' => 'application/json',
+            ],
+            'timeout' => 30,
+        ]);
+
+        $data = $response->toArray();
+
+        if (isset($data['embeddings'])) {
+            return array_map(fn($e) => $e['values'], $data['embeddings']);
+        }
+
+        throw new \Exception('Failed to generate batch embeddings from Gemini API.');
+    }
 }

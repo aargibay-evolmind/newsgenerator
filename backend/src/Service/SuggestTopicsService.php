@@ -5,7 +5,8 @@ namespace App\Service;
 class SuggestTopicsService
 {
     public function __construct(
-        private readonly GeminiService $gemini
+        private readonly GeminiService $gemini,
+        private readonly KnowledgeBaseService $knowledgeBase
     ) {}
 
     /**
@@ -14,12 +15,29 @@ class SuggestTopicsService
      */
     public function suggest(string $topic): array
     {
-        $prompt = empty(trim($topic))
-            ? "Eres un **Estratega de Crecimiento Académico en España**. Sugiere exactamente 3 titulares de noticias o guías de formación que estén marcando tendencia ahora mismo (nuevas convocatorias de FP, profesiones con salarios >30k€ en 2026 o formación con empleabilidad garantizada). Deben ser magnéticos, ultra-clicables y resaltar el beneficio económico o profesional inmediato. Solo devuelve los conceptos/títulos."
-            : sprintf(
-                "Eres un **Estratega SEO Educativo**. Sugiere exactamente 3 titulares competitivos y altamente atractivos para un artículo sobre: '%s'. Deben enfocarse en la resolución de dudas críticas, el aumento salarial por titulación oficial o el éxito laboral 2026. Diseñados para convertir lectores en potenciales alumnos. Solo devuelve los conceptos/títulos.",
-                $topic
-            );
+        // Fetch a sample of courses to give the AI context of what we sell
+        $courses = $this->knowledgeBase->getRelevantCourses($topic ?: 'FP Cursos Profesionales');
+        $coursesStr = "";
+        foreach ($courses as $c) {
+            $coursesStr .= "- {$c['name']} ({$c['category']})\n";
+        }
+
+        $prompt = "Eres un **Estratega de Crecimiento Académico en España**. Tu misión es sugerir 3 titulares de alto impacto.\n\n";
+        
+        if (!empty($coursesStr)) {
+            $prompt .= "**CURSOS DISPONIBLES EN NUESTRA ACADEMIA:**\n" . $coursesStr . "\n";
+            $prompt .= "IMPORTANTE: Al menos 2 de los 3 temas sugeridos deben estar directamente relacionados con estos cursos para facilitar la venta.\n\n";
+        }
+
+        $prompt .= "### CATEGORÍAS DE INTENCIÓN REQUERIDAS:\n";
+        $prompt .= "1. **Informativo/Tendencia:** (Ej: 'Nuevas becas FP 2026' o 'Cambios en la Ley de Educación').\n";
+        $prompt .= "2. **Comercial/Transaccional:** (Ej: 'Los 5 cursos con más salida' o '¿Cuánto gana un Técnico en X?').\n";
+        $prompt .= "3. **Guía de Autoridad:** (Ej: 'Cómo conseguir tu título oficial en menos de 1 año').\n\n";
+
+        $prompt .= sprintf(
+            "Sugiere 3 titulares magnéticos para el tema: '%s'. Deben ser ultra-clicables, resaltar el beneficio económico (sueldos) o profesional (empleo) y estar optimizados para SEO 2026. Solo devuelve los conceptos/títulos.",
+            $topic ?: "Tendencias en Formación y Empleo 2026"
+        );
 
         $schema = [
             'type' => 'OBJECT', // TYPE_OBJECT from the specification

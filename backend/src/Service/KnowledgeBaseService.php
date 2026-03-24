@@ -26,15 +26,32 @@ class KnowledgeBaseService
         $synced = 0;
         $needsSync = false;
 
+        $missingCourses = [];
+        $missingKeys = [];
+
         foreach ($allCourses as $course) {
             $contentKey = $course['category'] . '|' . $course['name'];
-            
             if (!isset($allEmbeddings[$contentKey])) {
+                $missingCourses[] = $course['category'] . ': ' . $course['name'];
+                $missingKeys[] = $contentKey;
+            }
+        }
+
+        if (!empty($missingCourses)) {
+            // Gemini batch API allows up to 100 requests per batch
+            $chunks = array_chunk($missingCourses, 100);
+            $keyChunks = array_chunk($missingKeys, 100);
+
+            foreach ($chunks as $i => $chunk) {
                 try {
-                    $allEmbeddings[$contentKey] = $this->geminiService->getEmbedding($course['category'] . ': ' . $course['name']);
-                    $synced++;
+                    $vectors = $this->geminiService->getBatchEmbeddings($chunk);
+                    foreach ($vectors as $j => $vector) {
+                        $allEmbeddings[$keyChunks[$i][$j]] = $vector;
+                        $synced++;
+                    }
                     $needsSync = true;
                 } catch (\Exception $e) {
+                    // Log or handle error
                     continue;
                 }
             }
