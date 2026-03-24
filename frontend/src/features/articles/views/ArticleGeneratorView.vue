@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useArticleStore } from '../../articles/store/articleStore'
 import { 
@@ -7,11 +7,13 @@ import {
   useUrlScraping, 
   useGenerateOutline, 
   useGenerateArticle,
-  useSaveArticle
+  useSaveArticle,
+  useSyncKnowledgeBase
 } from '../../articles/composables'
 import MainHeader from '@/components/MainHeader.vue';
 import DualPaneEditor from '../components/DualPaneEditor.vue'
 import GenerationStepper from '../components/GenerationStepper.vue'
+import { cleanMarkdown } from '@/utils/markdown'
 
 // Store and API hooks
 const store = useArticleStore()
@@ -37,6 +39,11 @@ const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
 const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerateOutline()
 const { mutateAsync: generateArticle, isPending: generateLoading } = useGenerateArticle()
 const { mutateAsync: saveArticleMutation, isPending: isSavingArticle } = useSaveArticle()
+const { mutate: syncKB } = useSyncKnowledgeBase()
+
+onMounted(() => {
+  syncKB()
+})
 
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
@@ -313,11 +320,11 @@ async function handleGenerateArticle() {
     
     // Split metadata from markdown
     const parts = response.markdown.split('---METADATA---');
-    if (parts.length >= 2) {
-      generatedMarkdown.value = parts[0].trim();
+    if (parts.length >= 2 && parts[0] !== undefined && parts[1] !== undefined) {
+      generatedMarkdown.value = cleanMarkdown(parts[0]);
       articleMetadata.value = parseMetadataBlock(parts[1]);
     } else {
-      generatedMarkdown.value = response.markdown;
+      generatedMarkdown.value = cleanMarkdown(response.markdown);
       // Reset metadata if not found
       articleMetadata.value = {
         friendlyUrl: '',
@@ -416,7 +423,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-screen bg-background overflow-hidden relative font-sans text-text">
+  <div class="flex flex-col h-screen bg-background dark:bg-dark-background overflow-hidden relative font-sans text-text dark:text-dark-text transition-colors duration-300">
     <MainHeader />
 
     <!-- Global Error Toast -->
@@ -428,12 +435,12 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="errorMessage" class="fixed top-20 right-4 z-50 max-w-sm bg-white border-l-4 border-red-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3">
+      <div v-if="errorMessage" class="fixed top-20 right-4 z-50 max-w-sm bg-background dark:bg-dark-surface border-l-4 border-red-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3 border border-secondary/10 dark:border-dark-border">
         <svg class="h-5 w-5 text-red-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
         <div class="flex-1">
-          <p class="text-sm font-medium text-slate-800">{{ errorMessage }}</p>
+          <p class="text-sm font-medium text-text dark:text-dark-text">{{ errorMessage }}</p>
         </div>
-        <button @click="errorMessage = null" class="text-slate-400 hover:text-slate-600">
+        <button @click="errorMessage = null" class="text-secondary hover:text-text dark:text-dark-text/40 dark:hover:text-dark-text">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
         </button>
       </div>
@@ -448,14 +455,14 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="successMessage" class="fixed top-20 right-4 z-[60] max-w-sm w-full bg-white border-l-4 border-green-500 rounded-lg shadow-2xl p-4 flex items-start gap-4 ring-1 ring-black/5">
-        <div class="rounded-full bg-green-100 p-1 shrink-0 mt-0.5">
-          <svg class="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
+      <div v-if="successMessage" class="fixed top-20 right-4 z-[60] max-w-sm w-full bg-background dark:bg-dark-surface border-l-4 border-green-500 rounded-lg shadow-2xl p-4 flex items-start gap-4 ring-1 ring-black/5 dark:ring-white/5">
+        <div class="rounded-full bg-green-100 dark:bg-green-900/30 p-1 shrink-0 mt-0.5">
+          <svg class="h-5 w-5 text-green-600 dark:text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" /></svg>
         </div>
         <div class="flex-1 w-0">
-          <p class="text-sm font-semibold text-slate-900 leading-snug">{{ successMessage }}</p>
+          <p class="text-sm font-semibold text-text dark:text-dark-text leading-snug">{{ successMessage }}</p>
         </div>
-        <button @click="successMessage = null" class="shrink-0 text-slate-400 hover:text-slate-500 hover:bg-slate-100 p-1 rounded-md transition-colors">
+        <button @click="successMessage = null" class="shrink-0 text-secondary dark:text-dark-text/40 hover:text-text dark:hover:text-dark-text hover:bg-secondary/10 dark:hover:bg-dark-border p-1 rounded-md transition-colors">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
         </button>
       </div>
@@ -484,7 +491,7 @@ onUnmounted(() => {
 
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <!-- MAIN CONTENT -->
-            <div class="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-secondary/10 overflow-hidden ring-1 ring-text/5">
+            <div class="lg:col-span-3 bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border overflow-hidden ring-1 ring-text/5 dark:ring-white/5 transition-colors">
               <div class="p-8 space-y-8">
                 
                 <!-- Quick Start Title -->
@@ -495,13 +502,13 @@ onUnmounted(() => {
                     v-model="blogTitle"
                     @input="titleError = false"
                     type="text"
-                    class="block w-full rounded-2xl border-0 py-4 px-5 text-text shadow-sm ring-1 ring-inset placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset sm:text-lg sm:leading-relaxed transition-all"
+                    class="block w-full rounded-2xl border-0 py-4 px-5 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset sm:text-lg sm:leading-relaxed transition-all"
                     :class="titleError 
-                      ? 'ring-red-400 focus:ring-red-400 bg-red-50/30' 
-                      : 'ring-secondary/20 focus:ring-primary'"
+                      ? 'ring-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-900/10' 
+                      : 'ring-secondary/20 dark:ring-dark-border focus:ring-primary'"
                     placeholder="Ej. Cómo ser Guardia Civil, pasos para ingresar..."
                   />
-                  <div v-if="titleError" class="mt-2 flex items-center gap-1.5 text-red-600 text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div v-if="titleError" class="mt-2 flex items-center gap-1.5 text-red-600 dark:text-red-400 text-sm font-medium animate-in fade-in slide-in-from-top-1 duration-200">
                     <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
                     El título de la noticia es obligatorio.
                   </div>
@@ -518,21 +525,21 @@ onUnmounted(() => {
                     </button>
 
                     <!-- Stacked selectable topics -->
-                    <div v-if="suggestedTopics.length > 0" class="mt-3 rounded-2xl border border-primary/10 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
-                      <div class="flex items-center justify-between px-4 py-2 border-b border-primary/10">
+                    <div v-if="suggestedTopics.length > 0" class="mt-3 rounded-2xl border border-primary/10 dark:border-primary/20 bg-primary/5 dark:bg-primary/10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div class="flex items-center justify-between px-4 py-2 border-b border-primary/10 dark:border-primary/20">
                         <span class="text-xs font-bold text-primary uppercase tracking-widest">Sugerencias</span>
-                        <button @click="suggestedTopics = []" class="flex items-center justify-center h-6 w-6 rounded-full text-secondary hover:bg-primary/10 hover:text-primary transition-colors" title="Limpiar sugerencias">
+                        <button @click="suggestedTopics = []" class="flex items-center justify-center h-6 w-6 rounded-full text-secondary dark:text-dark-text/40 hover:bg-primary/10 hover:text-primary transition-colors" title="Limpiar sugerencias">
                           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       </div>
-                      <div class="divide-y divide-primary/5">
+                      <div class="divide-y divide-primary/5 dark:divide-primary/10">
                         <button 
                           v-for="(topic, idx) in suggestedTopics" 
                           :key="idx"
                           @click="blogTitle = topic; suggestedTopics = []"
-                          class="w-full text-left px-4 py-3 text-sm font-medium text-text hover:bg-primary hover:text-white transition-colors duration-150 flex items-center gap-3 group"
+                          class="w-full text-left px-4 py-3 text-sm font-medium text-text dark:text-dark-text hover:bg-primary hover:text-white transition-colors duration-150 flex items-center gap-3 group"
                         >
-                          <span class="shrink-0 h-5 w-5 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary transition-colors hover:text-white">{{ idx + 1 }}</span>
+                          <span class="shrink-0 h-5 w-5 rounded-full bg-primary/10 dark:bg-primary/20 group-hover:bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary transition-colors hover:text-white">{{ idx + 1 }}</span>
                           {{ topic }}
                         </button>
                       </div>
@@ -541,10 +548,10 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Leads -->
-                <div class="pt-6 border-t border-secondary/10">
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label for="puntos-clave" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Leads (Puntos clave)</label>
-                    <p class="text-xs text-secondary">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
+                    <label for="puntos-clave" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Leads (Puntos clave)</label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -552,16 +559,16 @@ onUnmounted(() => {
                       v-model="newKeyPoint" 
                       @keydown.enter.prevent="addKeyPoint"
                       type="text" 
-                      class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm"
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm transition-all"
                       placeholder="Ej. Requisitos físicos... (Presiona Enter)" 
                     />
-                    <button @click="addKeyPoint" class="px-4 py-2 bg-secondary/10 hover:bg-secondary/20 text-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 shadow-sm shrink-0">
+                    <button @click="addKeyPoint" class="px-4 py-2 bg-secondary/10 dark:bg-dark-surface hover:bg-secondary/20 dark:hover:bg-dark-background text-text dark:text-dark-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 dark:border-dark-border shadow-sm shrink-0">
                       Añadir
                     </button>
                   </div>
                   <!-- Leads List Inline -->
                   <div class="flex flex-wrap gap-2" v-if="keyPoints.length > 0">
-                    <span v-for="(point, index) in keyPoints" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 text-primary border border-primary/20">
+                    <span v-for="(point, index) in keyPoints" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30">
                       {{ point }}
                       <button @click="removeKeyPoint(point)" class="text-primary/60 hover:text-primary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full p-0.5" title="Eliminar punto clave">
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -571,30 +578,30 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Keywords (Moved from sidebar) -->
-                <div class="pt-6 border-t border-secondary/10">
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Etiquetas / Keywords</label>
-                    <p class="text-xs text-secondary">Añade palabras clave para mejorar el enfoque del contenido y el SEO.</p>
+                    <label class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Etiquetas / Keywords</label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Añade palabras clave para mejorar el enfoque del contenido y el SEO.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
-                    <div class="relative flex-1 group ring-1 ring-inset ring-secondary/20 rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden shadow-sm bg-white">
+                    <div class="relative flex-1 group ring-1 ring-inset ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden shadow-sm bg-background dark:bg-dark-background transition-all">
                       <input
                         v-model="newTag"
                         @keydown.enter.prevent="addTag"
                         type="text"
-                        class="block w-full border-0 py-3 px-4 pr-10 text-text placeholder:text-secondary/40 focus:outline-none focus:ring-0 text-sm"
+                        class="block w-full border-0 py-3 px-4 pr-10 text-text dark:text-dark-text bg-transparent placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-0 text-sm"
                         placeholder="Añadir etiqueta y pulsar Enter..."
                       />
-                      <button @click="addTag" class="absolute right-1 top-1.5 h-8 w-8 flex items-center justify-center text-secondary/30 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg">
+                      <button @click="addTag" class="absolute right-1 top-1.5 h-8 w-8 flex items-center justify-center text-secondary/30 dark:text-dark-text/20 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg">
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                       </button>
                     </div>
                   </div>
                   <!-- Keywords List -->
                   <div class="flex flex-wrap gap-2" v-if="tags.length > 0">
-                    <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-lg bg-secondary/10 px-3 py-1.5 text-xs font-semibold text-text shadow-sm border border-secondary/20 transition-all hover:bg-secondary/20">
+                    <span v-for="tag in tags" :key="tag" class="inline-flex items-center gap-1.5 rounded-lg bg-secondary/10 dark:bg-dark-surface px-3 py-1.5 text-xs font-semibold text-text dark:text-dark-text shadow-sm border border-secondary/20 dark:border-dark-border transition-all hover:bg-secondary/20 dark:hover:bg-dark-background">
                       {{ tag }}
-                      <button @click="removeTag(tag)" class="-mr-1 text-secondary/40 hover:text-red-500 rounded-full hover:bg-secondary/30 transition-colors p-0.5" title="Eliminar etiqueta">
+                      <button @click="removeTag(tag)" class="-mr-1 text-secondary/40 dark:text-dark-text/30 hover:text-red-500 rounded-full hover:bg-secondary/30 transition-colors p-0.5" title="Eliminar etiqueta">
                          <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
                       </button>
                     </span>
@@ -602,22 +609,22 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Reference URLs -->
-                <div class="pt-6 border-t border-secondary/10">
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label for="reference-url" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">URLs de referencia <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
-                    <p class="text-xs text-secondary">Añade enlaces a artículos, noticias o fuentes oficiales que la IA deba analizar para generar el contenido.</p>
+                    <label for="reference-url" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">URLs de referencia <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Añade enlaces a artículos, noticias o fuentes oficiales que la IA deba analizar para generar el contenido.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
-                    <div class="relative flex-1 group ring-1 ring-secondary/20 rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-white">
+                    <div class="relative flex-1 group ring-1 ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-background dark:bg-dark-background">
                       <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <svg class="h-4 w-4 text-secondary/40 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        <svg class="h-4 w-4 text-secondary/40 dark:text-dark-text/20 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                       </div>
                       <input 
                         id="reference-url"
                         v-model="referenceUrl" 
                         @keydown.enter.prevent="handleScrape"
                         type="text" 
-                        class="block w-full border-0 py-3 pl-10 pr-4 text-text placeholder:text-secondary/40 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
+                        class="block w-full border-0 py-3 pl-10 pr-4 text-text dark:text-dark-text placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
                         placeholder="https://boe.es/articulo-importante..." 
                       />
                     </div>
@@ -633,14 +640,14 @@ onUnmounted(() => {
 
                   <!-- Scraped references list -->
                   <div class="space-y-2" v-if="scrapedReferences.length > 0">
-                    <div v-for="(ref, index) in scrapedReferences" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 group animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div v-for="(ref, index) in scrapedReferences" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/10 dark:border-primary/20 group animate-in fade-in slide-in-from-top-1 duration-200">
                       <div class="flex items-center gap-3 overflow-hidden">
-                        <div class="h-8 w-8 rounded-lg bg-white border border-primary/20 flex items-center justify-center shrink-0">
+                        <div class="h-8 w-8 rounded-lg bg-background dark:bg-dark-surface border border-primary/20 dark:border-primary/40 flex items-center justify-center shrink-0">
                            <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         </div>
                         <div class="flex flex-col min-w-0">
-                          <span class="text-xs font-bold text-text truncate leading-tight">{{ ref.title || 'Nueva Referencia' }}</span>
-                          <span class="text-[10px] text-secondary truncate">{{ ref.url }}</span>
+                          <span class="text-xs font-bold text-text dark:text-dark-text truncate leading-tight">{{ ref.title || 'Nueva Referencia' }}</span>
+                          <span class="text-[10px] text-secondary dark:text-dark-text/40 truncate">{{ ref.url }}</span>
                         </div>
                       </div>
                       <button @click="removeScrapedLink(ref.url)" class="p-1 px-2 text-primary/40 hover:text-red-500 transition-colors" title="Eliminar referencia">
@@ -651,14 +658,14 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Context and Guidelines moved from sidebar -->
-                <div class="pt-6 border-t border-secondary/10">
-                  <label for="additional-context" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60">(Opcional)</span></label>
-                  <p class="text-xs text-secondary mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
+                  <label for="additional-context" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
+                  <p class="text-xs text-secondary dark:text-dark-text/30 mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
                   <textarea
                     id="additional-context"
                     v-model="additionalContext"
                     rows="4"
-                    class="block w-full rounded-xl border-0 py-3 px-4 text-text shadow-sm ring-1 ring-inset ring-secondary/20 placeholder:text-secondary/40 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary text-sm resize-none transition-shadow"
+                    class="block w-full rounded-xl border-0 py-3 px-4 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary text-sm resize-none transition-shadow"
                     placeholder="Ej: Tono cercano y optimista. No mencionar requisitos de edad..."
                   ></textarea>
                 </div>
@@ -668,25 +675,25 @@ onUnmounted(() => {
 
             <!-- SIDEBAR: TARGETING -->
             <aside class="lg:col-span-1 h-full relative">
-              <div class="bg-slate-50/50 rounded-2xl shadow-sm border border-secondary/10 p-5 lg:sticky lg:top-24 flex flex-col h-full ring-1 ring-secondary/5">
-                <div class="flex items-center gap-2 pb-4 border-b border-secondary/10 shrink-0">
+              <div class="bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-5 lg:sticky lg:top-24 flex flex-col h-full ring-1 ring-secondary/5 dark:ring-white/5 transition-colors">
+                <div class="flex items-center gap-2 pb-4 border-b border-secondary/10 dark:border-dark-border shrink-0">
                   <div class="p-1.5 rounded-lg bg-primary/10 text-primary">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
                   </div>
-                  <h3 class="font-bold text-sm text-text">Preferencias</h3>
+                  <h3 class="font-bold text-sm text-text dark:text-dark-text">Preferencias</h3>
                 </div>
 
                 <div class="flex-1 flex flex-col pt-6 overflow-y-auto pr-2 custom-scrollbar">
                   <div class="space-y-8 pb-4">
                     <!-- Nivel de Lenguaje Técnico -->
                     <div>
-                      <label for="audience" class="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2.5">Lenguaje Técnico</label>
+                      <label for="audience" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Lenguaje Técnico</label>
                       <select
                         id="audience"
                         v-model="audience"
-                        class="block w-full rounded-xl border-0 py-2.5 px-3 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-white transition-all hover:bg-white/80"
+                        class="block w-full rounded-xl border-0 py-2.5 px-3 text-text dark:text-dark-text shadow-sm ring-1 ring-inset ring-secondary/10 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-background dark:bg-dark-background transition-all hover:bg-background/80 dark:hover:bg-dark-surface"
                       >
                         <option value="General">General</option>
                         <option value="Principiantes">Principiantes</option>
@@ -698,11 +705,11 @@ onUnmounted(() => {
 
                     <!-- Objetivo del artículo -->
                     <div>
-                      <label for="intent" class="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-2.5">Objetivo del artículo</label>
+                      <label for="intent" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Objetivo del artículo</label>
                       <select
                         id="intent"
                         v-model="searchIntent"
-                        class="block w-full rounded-xl border-0 py-2.5 px-3 text-text shadow-sm ring-1 ring-inset ring-secondary/10 focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-white transition-all hover:bg-white/80"
+                        class="block w-full rounded-xl border-0 py-2.5 px-3 text-text dark:text-dark-text shadow-sm ring-1 ring-inset ring-secondary/10 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-background dark:bg-dark-background transition-all hover:bg-background/80 dark:hover:bg-dark-surface"
                       >
                         <option value="Informativo">Informativo</option>
                         <option value="Tutorial">Tutorial</option>
@@ -713,15 +720,15 @@ onUnmounted(() => {
 
                     <!-- Tone Slider -->
                     <div>
-                      <label class="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">
+                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
                         Tono: 
                         <span class="text-primary ml-1">
                           {{ toneValue < 33 ? 'Profesional' : toneValue < 66 ? 'Cercano' : 'Viral/Audaz' }}
                         </span>
                       </label>
                       <div class="px-1">
-                        <input type="range" v-model.number="toneValue" min="0" max="100" class="w-full h-1.5 bg-secondary/10 rounded-lg appearance-none cursor-pointer mb-2.5 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
-                        <div class="flex justify-between text-[9px] uppercase font-bold text-secondary/30 tracking-tighter">
+                        <input type="range" v-model.number="toneValue" min="0" max="100" class="w-full h-1.5 bg-secondary/10 dark:bg-dark-border rounded-lg appearance-none cursor-pointer mb-2.5 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
+                        <div class="flex justify-between text-[9px] uppercase font-bold text-secondary/30 dark:text-dark-text/20 tracking-tighter">
                           <span>Prof.</span>
                           <span>Cercano</span>
                           <span>Viral</span>
@@ -731,13 +738,13 @@ onUnmounted(() => {
 
                     <!-- Section Count Slider -->
                     <div>
-                      <label class="block text-[10px] font-bold text-secondary uppercase tracking-widest mb-4">
+                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
                         Nº de Secciones: 
                         <span class="text-primary ml-1">{{ sectionCount }}</span>
                       </label>
                       <div class="px-1">
-                        <input type="range" v-model.number="sectionCount" min="5" max="10" class="w-full h-1.5 bg-secondary/10 rounded-lg appearance-none cursor-pointer mb-2.5 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
-                        <div class="flex justify-between text-[9px] uppercase font-bold text-secondary/30 tracking-tighter">
+                        <input type="range" v-model.number="sectionCount" min="5" max="10" class="w-full h-1.5 bg-secondary/10 dark:bg-dark-border rounded-lg appearance-none cursor-pointer mb-2.5 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
+                        <div class="flex justify-between text-[9px] uppercase font-bold text-secondary/30 dark:text-dark-text/20 tracking-tighter">
                           <span>5 secc.</span>
                           <span>7 secc.</span>
                           <span>10 secc.</span>
@@ -747,9 +754,9 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div class="mt-auto pt-5 border-t border-secondary/10 flex flex-col items-stretch gap-4">
-                  <div class="w-full bg-primary/5 rounded-xl p-3 border border-primary/10">
-                    <p class="text-[9px] text-secondary leading-relaxed font-medium">
+                <div class="mt-auto pt-5 border-t border-secondary/10 dark:border-dark-border flex flex-col items-stretch gap-4">
+                  <div class="w-full bg-primary/5 dark:bg-primary/10 rounded-xl p-3 border border-primary/10 dark:border-primary/20">
+                    <p class="text-[9px] text-secondary dark:text-dark-text/30 leading-relaxed font-medium">
                       <span class="text-primary font-bold uppercase tracking-tighter mr-1">Pro Tip:</span> 
                       Estos ajustes permiten a la IA optimizar la complejidad del lenguaje y el formato de la noticia.
                     </p>
@@ -778,9 +785,9 @@ onUnmounted(() => {
         <div v-else-if="currentStep === 2" class="flex flex-col gap-6" key="step2">
 
           <!-- Outline Card -->
-          <div class="w-full bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 flex flex-col ring-1 ring-text/5">
+          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
           <div class="flex items-center justify-between mb-1">
-                <h2 class="text-lg font-bold text-text flex items-center gap-2">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
                   <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
                   Esquema Interactivo
                 </h2>
@@ -791,7 +798,7 @@ onUnmounted(() => {
                   {{ allOutlineIncluded ? 'Deseleccionar Todo' : 'Seleccionar Todo' }}
                 </button>
               </div>
-              <p class="text-sm text-secondary mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
+              <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Activa, reorganiza o edita los encabezados propuestos.</p>
               
               <ul class="space-y-3 pr-2">
                 <li v-for="(item, index) in outlineList" :key="item.id" 
@@ -800,8 +807,8 @@ onUnmounted(() => {
                     @dragover.prevent
                     @dragenter.prevent
                     @drop="onDrop(index)"
-                    class="group flex items-center gap-3 bg-white border border-secondary/20 rounded-xl p-3 hover:border-secondary/30 hover:bg-secondary/5 transition-all cursor-move" 
-                    :class="{'border-dashed border-secondary/30 bg-secondary/5 opacity-40': draggedItemIndex === index}">
+                    class="group flex items-center gap-3 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 hover:border-secondary/30 dark:hover:border-primary/30 hover:bg-secondary/5 dark:hover:bg-primary/5 transition-all cursor-move" 
+                    :class="{'border-dashed border-secondary/30 dark:border-primary/30 bg-secondary/5 dark:bg-primary/5 opacity-40': draggedItemIndex === index}">
                   
                   <!-- Drag Handle -->
                   <span class="cursor-grab text-secondary/30 hover:text-secondary shrink-0">
@@ -818,14 +825,14 @@ onUnmounted(() => {
                     <input 
                       type="text" 
                       v-model="item.text" 
-                      class="text-sm font-semibold text-text flex-grow border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-1 transition-all" 
+                      class="text-sm font-semibold text-text dark:text-dark-text flex-grow border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-1 transition-all" 
                     />
                     
                     <!-- Budget Selector -->
                     <select
                       v-if="item.included"
                       v-model="item.budget"
-                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold text-secondary bg-secondary/5 ring-1 ring-inset ring-secondary/20 focus:outline-none focus:ring-2 focus:ring-secondary/40 cursor-pointer"
+                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold text-secondary dark:text-dark-text/60 bg-secondary/5 dark:bg-dark-surface ring-1 ring-inset ring-secondary/20 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-secondary/40 dark:focus:ring-primary/40 cursor-pointer"
                     >
                       <option value="short">Breve (~100 palabras)</option>
                       <option value="medium">Normal (~250 palabras)</option>
@@ -834,7 +841,7 @@ onUnmounted(() => {
                   </div>
                   
                   <!-- Delete Action -->
-                  <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
+                  <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 dark:text-dark-text/20 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
                   </button>
                 </li>
@@ -852,31 +859,31 @@ onUnmounted(() => {
                 <!-- Elementos Adicionales inline -->
                 <div class="flex items-center gap-6">
                   <label class="flex items-center gap-2 cursor-pointer group select-none">
-                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 ease-in-out cursor-pointer" />
-                    <span class="text-xs font-semibold text-secondary group-hover:text-text transition-colors">Incluir listas</span>
+                    <input type="checkbox" v-model="includeLists" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-secondary/40 dark:focus:ring-primary transition duration-150 ease-in-out cursor-pointer bg-transparent" />
+                    <span class="text-xs font-semibold text-secondary dark:text-dark-text/60 group-hover:text-text dark:group-hover:text-dark-text transition-colors">Incluir listas</span>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer group select-none">
-                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 ease-in-out cursor-pointer" />
-                    <span class="text-xs font-semibold text-secondary group-hover:text-text transition-colors">Incluir tablas</span>
+                    <input type="checkbox" v-model="includeTables" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-secondary/40 dark:focus:ring-primary transition duration-150 ease-in-out cursor-pointer bg-transparent" />
+                    <span class="text-xs font-semibold text-secondary dark:text-dark-text/60 group-hover:text-text dark:group-hover:text-dark-text transition-colors">Incluir tablas</span>
                   </label>
                 </div>
               </div>
           </div>
 
           <!-- Suggested Links Card -->
-          <div class="w-full bg-white rounded-2xl shadow-sm border border-secondary/10 p-6 flex flex-col ring-1 ring-text/5">
-                <h2 class="text-lg font-bold text-text mb-1 flex items-center gap-2">
+          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
                   <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                   Enlaces Sugeridos
                 </h2>
-                <p class="text-sm text-secondary mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
+                <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
                 
                 <ul class="space-y-3 pr-2">
-                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-white border border-secondary/20 rounded-xl p-3 hover:border-secondary/30 hover:bg-secondary/5 transition-all">
+                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 hover:border-secondary/30 dark:hover:border-primary/30 hover:bg-secondary/5 dark:hover:bg-primary/5 transition-all">
                     
                     <!-- Checkbox -->
                     <div class="flex items-center shrink-0 mt-0.5">
-                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-secondary/30 text-primary focus:ring-secondary/40 transition duration-150 cursor-pointer" />
+                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-secondary/40 dark:focus:ring-primary transition duration-150 cursor-pointer bg-transparent" />
                     </div>
 
                     <!-- Link Info -->
@@ -885,13 +892,13 @@ onUnmounted(() => {
                         <input 
                           type="text" 
                           v-model="link.title" 
-                          class="text-sm font-semibold text-text w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all" 
+                          class="text-sm font-semibold text-text dark:text-dark-text w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all" 
                         />
                       </div>
                       <input 
                         type="text" 
                         v-model="link.url" 
-                        class="text-xs text-secondary w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all truncate" 
+                        class="text-xs text-secondary dark:text-dark-text/40 w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all truncate" 
                       />
                     </div>
                     
@@ -902,12 +909,12 @@ onUnmounted(() => {
                   </li>
                 </ul>
 
-                <div class="mt-4 flex justify-start pt-4 border-t border-slate-100 gap-2 items-center">
+                <div class="mt-4 flex justify-start pt-4 border-t border-secondary/10 dark:border-dark-border gap-2 items-center">
                    <div class="flex-1 grid grid-cols-2 gap-2">
-                      <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-xs">
-                      <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-400 sm:text-xs">
+                      <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all">
+                      <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all">
                    </div>
-                   <button @click="addLink" class="inline-flex items-center justify-center shrink-0 w-8 h-8 font-semibold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50 hover:bg-indigo-100 rounded-lg" title="Añadir enlace">
+                   <button @click="addLink" class="inline-flex items-center justify-center shrink-0 w-8 h-8 font-semibold text-primary hover:text-primary transition-colors bg-primary/10 hover:bg-primary/20 rounded-lg border border-primary/10" title="Añadir enlace">
                       <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                    </button>
                 </div>
@@ -915,7 +922,7 @@ onUnmounted(() => {
 
           <!-- Action bar -->
           <div class="flex justify-between items-center gap-4 mt-2 pb-4">
-            <button @click="goNext(1)" class="inline-flex items-center gap-2 rounded-xl bg-white border border-secondary/20 px-5 py-3 text-sm font-semibold text-secondary hover:bg-secondary/5 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+            <button @click="goNext(1)" class="inline-flex items-center gap-2 rounded-xl bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border px-5 py-3 text-sm font-semibold text-secondary dark:text-dark-text hover:bg-secondary/5 dark:hover:bg-dark-background transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary">
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
               Volver
             </button>
@@ -967,11 +974,11 @@ onUnmounted(() => {
 
 /* Custom TOC Styles */
 :deep(details) {
-  @apply bg-background border border-secondary/20 rounded-xl my-6 overflow-hidden transition-all duration-300;
+  @apply bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-xl my-6 overflow-hidden transition-all duration-300;
 }
 
 :deep(summary) {
-  @apply px-5 py-3 cursor-pointer font-bold text-text bg-secondary/5 hover:bg-secondary/10 transition-colors list-none flex items-center gap-2;
+  @apply px-5 py-3 cursor-pointer font-bold text-text dark:text-dark-text bg-secondary/5 dark:bg-primary/10 hover:bg-secondary/10 dark:hover:bg-primary/20 transition-colors list-none flex items-center gap-2;
 }
 
 :deep(summary::-webkit-details-marker) {
@@ -987,7 +994,7 @@ onUnmounted(() => {
 }
 
 :deep(details > ul) {
-  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10;
+  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10 dark:border-dark-border;
 }
 
 :deep(details > ul li a) {
@@ -1001,10 +1008,10 @@ onUnmounted(() => {
 }
 
 :deep(.prose thead) {
-  @apply bg-secondary/5;
+  @apply bg-secondary/5 dark:bg-primary/10;
 }
 
 :deep(.prose th), :deep(.prose td) {
-  @apply border border-secondary/10 px-4 py-2 min-w-[120px];
+  @apply border border-secondary/10 dark:border-dark-border px-4 py-2 min-w-[120px] dark:text-dark-text/80;
 }
 </style>

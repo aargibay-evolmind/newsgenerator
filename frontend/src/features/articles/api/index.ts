@@ -71,4 +71,9 @@ export const ArticleAPI = {
     apiClient<{ message: string }>(`/articles/${id}`, {
       method: 'DELETE'
     }),
+
+  syncKnowledgeBase: () =>
+    apiClient<{ total: number; synced: number }>('/knowledge-base/sync', {
+      method: 'POST'
+    }),
 };

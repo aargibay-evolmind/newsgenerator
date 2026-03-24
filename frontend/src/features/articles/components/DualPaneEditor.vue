@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { renderMarkdown, cleanMarkdown } from '@/utils/markdown'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { useRegenerateSection } from '../composables'
 
@@ -130,13 +131,7 @@ function downloadArticle(format: 'markdown' | 'html') {
   showSaveDropdown.value = false
 }
 
-const renderedHtml = computed(() => {
-  const rawHtml = marked.parse(generatedMarkdown.value) as string
-  return DOMPurify.sanitize(rawHtml, {
-    ADD_ATTR: ['src'],
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-  }).replace(/<details>/g, '<details open>')
-})
+const renderedHtml = computed(() => renderMarkdown(generatedMarkdown.value))
 
 function copyToClipboard() {
   const content = renderedHtml.value
@@ -207,7 +202,7 @@ async function confirmRegeneration() {
       guidelines: regenGuidelines.value
     })
     
-    newVersion.value = response.content
+    newVersion.value = cleanMarkdown(response.content)
     isReviewingRegen.value = true
     showRegenInput.value = false
     regenGuidelines.value = ''
@@ -261,7 +256,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-xl border border-secondary/10 overflow-hidden relative">
+  <div class="flex-1 flex flex-col min-h-0 bg-background dark:bg-dark-background rounded-2xl shadow-xl border border-secondary/10 dark:border-dark-border overflow-hidden relative transition-colors duration-300">
     <transition
       enter-active-class="transform ease-out duration-300 transition"
       enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2"
@@ -270,20 +265,20 @@ onUnmounted(() => {
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="errorMessage" class="absolute top-16 right-4 z-50 max-w-sm bg-white border-l-4 border-red-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3">
+      <div v-if="errorMessage" class="absolute top-16 right-4 z-50 max-w-sm bg-background dark:bg-dark-surface border-l-4 border-red-500 rounded-r-lg shadow-xl p-4 flex items-start gap-3 border border-secondary/10 dark:border-dark-border">
         <svg class="h-5 w-5 text-red-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>
         <div class="flex-1">
-          <p class="text-sm font-medium text-slate-800">{{ errorMessage }}</p>
+          <p class="text-sm font-medium text-text dark:text-dark-text">{{ errorMessage }}</p>
         </div>
-        <button @click="errorMessage = null" class="text-slate-400 hover:text-slate-600">
+        <button @click="errorMessage = null" class="text-secondary dark:text-dark-text/40 hover:text-text dark:hover:text-dark-text">
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
         </button>
       </div>
     </transition>
     <!-- Top Tool Bar -->
-    <div class="bg-background border-b border-secondary/10 p-4 flex justify-between items-center shrink-0">
+    <div class="bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border p-4 flex justify-between items-center shrink-0">
       <div class="flex items-center gap-4">
-        <button v-if="!hideBack" @click="$emit('back')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+        <button v-if="!hideBack" @click="$emit('back')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary dark:text-dark-text/60 bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-lg hover:bg-secondary/5 dark:hover:bg-dark-background transition-colors">
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           {{ backPrompt || 'Volver' }}
         </button>
@@ -297,29 +292,29 @@ onUnmounted(() => {
           </button>
           
           <!-- Dropdown -->
-          <div v-if="showSaveDropdown" class="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-secondary/10 py-2 z-50">
+          <div v-if="showSaveDropdown" class="absolute left-0 mt-2 w-48 bg-background dark:bg-dark-surface rounded-xl shadow-2xl border border-secondary/10 dark:border-dark-border py-2 z-50">
             <button 
               @click="handleSave"
               :disabled="isSaving"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-accent hover:bg-accent/5 transition-colors flex items-center gap-2 mb-1 disabled:opacity-50"
+              class="w-full text-left px-4 py-2 text-xs font-semibold text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-2 mb-1 disabled:opacity-50"
             >
               <svg v-if="isSaving" class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
               <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
               {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar Artículo') }}
             </button>
-            <div class="px-3 py-2 border-b border-t border-secondary/5 mb-1 mt-1">
-              <span class="text-[10px] font-bold text-secondary/40 uppercase tracking-widest">Descargar como</span>
+            <div class="px-3 py-2 border-b border-t border-secondary/5 dark:border-dark-border/40 mb-1 mt-1">
+              <span class="text-[10px] font-bold text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Descargar como</span>
             </div>
             <button 
               @click="downloadArticle('markdown')"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-text hover:bg-primary/5 hover:text-primary transition-colors flex items-center gap-2"
+              class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
             >
               <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               Markdown (.txt)
             </button>
             <button 
               @click="downloadArticle('html')"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-text hover:bg-primary/5 hover:text-primary transition-colors flex items-center gap-2"
+              class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
             >
               <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
               HTML (.txt)
@@ -329,11 +324,11 @@ onUnmounted(() => {
           <!-- Backdrop for closing dropdown -->
           <div v-if="showSaveDropdown" @click="showSaveDropdown = false" class="fixed inset-0 z-40"></div>
         </div>
-        <div class="h-6 w-px bg-secondary/10"></div>
+        <div class="h-6 w-px bg-secondary/10 dark:bg-dark-border"></div>
       </div>
 
       <div class="flex items-center gap-3">
-        <router-link to="/" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+        <router-link to="/" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-secondary dark:text-dark-text/60 bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-lg hover:bg-secondary/5 dark:hover:bg-dark-background transition-colors">
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           Panel de Control
         </router-link>
@@ -344,20 +339,20 @@ onUnmounted(() => {
     <div class="flex-1 flex flex-col overflow-hidden min-h-0">
       
       <!-- Metadata Dashboard Collapsible -->
-      <div v-if="metadata && (metadata.friendlyUrl || metadata.metaTitle)" class="border-b border-secondary/10 bg-white shrink-0">
+      <div v-if="metadata && (metadata.friendlyUrl || metadata.metaTitle)" class="border-b border-secondary/10 dark:border-dark-border bg-background dark:bg-dark-background shrink-0 transition-colors">
         <button 
           @click="showMetadata = !showMetadata"
-          class="w-full px-6 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors group"
+          class="w-full px-6 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-dark-surface transition-colors group"
         >
           <div class="flex items-center gap-3">
-            <div class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+            <div class="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/50 transition-colors">
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
             <div class="text-left">
-              <h3 class="text-xs font-bold text-text uppercase tracking-wider">Metadatos Generados (SEO & Email)</h3>
-              <p class="text-[10px] text-secondary">Slug, títulos SEO, descripción y contenido para suscriptores</p>
+              <h3 class="text-xs font-bold text-text dark:text-dark-text uppercase tracking-wider">Metadatos Generados (SEO & Email)</h3>
+              <p class="text-[10px] text-secondary dark:text-dark-text/50">Slug, títulos SEO, descripción y contenido para suscriptores</p>
             </div>
           </div>
           <svg 
@@ -377,93 +372,93 @@ onUnmounted(() => {
           leave-from-class="max-h-[500px] opacity-100"
           leave-to-class="max-h-0 opacity-0"
         >
-          <div v-if="showMetadata" class="overflow-hidden bg-slate-50/50 border-t border-secondary/5">
+          <div v-if="showMetadata" class="overflow-hidden bg-slate-50/50 dark:bg-dark-surface/30 border-t border-secondary/5 dark:border-dark-border/30">
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[400px] overflow-y-auto custom-scrollbar">
               
               <!-- SEO Section -->
               <div class="space-y-4">
-                <h4 class="text-[10px] font-black text-secondary/40 uppercase tracking-widest border-b border-secondary/10 pb-2">SEO & URL</h4>
+                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">SEO & URL</h4>
                 
                 <!-- Friendly URL -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Friendly URL</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Friendly URL</label>
                     <button @click="copyField(metadata.friendlyUrl, 'url')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'url' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs font-mono text-text break-all">{{ metadata.friendlyUrl }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs font-mono text-text dark:text-dark-text break-all transition-colors">{{ metadata.friendlyUrl }}</div>
                 </div>
 
                 <!-- Meta Title -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Title ({{ metadata.metaTitle.length }} chars)</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Meta Title ({{ metadata.metaTitle.length }} chars)</label>
                     <button @click="copyField(metadata.metaTitle, 'title')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'title' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed italic">{{ metadata.metaTitle }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs text-text dark:text-dark-text leading-relaxed italic transition-colors">{{ metadata.metaTitle }}</div>
                 </div>
 
                 <!-- Meta Keywords -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Keywords</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Meta Keywords</label>
                     <button @click="copyField(metadata.metaKeywords, 'keywords')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'keywords' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.metaKeywords }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.metaKeywords }}</div>
                 </div>
               </div>
 
               <!-- Content & Email Section -->
               <div class="space-y-4">
-                 <h4 class="text-[10px] font-black text-secondary/40 uppercase tracking-widest border-b border-secondary/10 pb-2">Engagement & Newsletter</h4>
+                 <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Engagement & Newsletter</h4>
 
                  <!-- Meta Description -->
                  <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Meta Description</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Meta Description</label>
                     <button @click="copyField(metadata.metaDescription, 'desc')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'desc' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.metaDescription }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.metaDescription }}</div>
                 </div>
 
                 <!-- Short Text -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Short Text (Home/Listings)</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Short Text (Home/Listings)</label>
                     <button @click="copyField(metadata.shortText, 'short')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'short' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed">{{ metadata.shortText }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.shortText }}</div>
                 </div>
 
                 <!-- Email Title -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Email Subject</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Email Subject</label>
                     <button @click="copyField(metadata.emailTitle, 'emailTitle')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'emailTitle' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs font-bold text-text leading-relaxed">{{ metadata.emailTitle }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs font-bold text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.emailTitle }}</div>
                 </div>
 
                 <!-- Email Text -->
                 <div class="flex flex-col gap-1.5">
                   <div class="flex items-center justify-between">
-                    <label class="text-[10px] font-bold text-secondary uppercase tracking-wider">Email Body</label>
+                    <label class="text-[10px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Email Body</label>
                     <button @click="copyField(metadata.emailText, 'emailText')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
                       {{ copiedField === 'emailText' ? '¡Copiado!' : 'Copiar' }}
                     </button>
                   </div>
-                  <div class="px-3 py-2 bg-white border border-secondary/10 rounded-lg text-xs text-text leading-relaxed whitespace-pre-wrap">{{ metadata.emailText }}</div>
+                  <div class="px-3 py-2 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg text-xs text-text dark:text-dark-text leading-relaxed whitespace-pre-wrap transition-colors">{{ metadata.emailText }}</div>
                 </div>
               </div>
 
@@ -475,13 +470,13 @@ onUnmounted(() => {
       <div class="flex-1 flex items-stretch overflow-hidden min-h-0">
       
       <!-- EDITOR PANE -->
-      <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-secondary/10 bg-slate-50">
-        <div class="h-11 px-4 bg-background border-b border-secondary/10 flex items-center justify-between shrink-0">
-          <span class="text-[10px] font-black text-secondary/40 uppercase tracking-widest leading-none">Editor de Texto</span>
+      <div class="flex-1 flex flex-col min-w-0 min-h-0 border-r border-secondary/10 dark:border-dark-border bg-slate-50 dark:bg-dark-surface/10 transition-colors">
+        <div class="h-11 px-4 bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border flex items-center justify-between shrink-0">
+          <span class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest leading-none">Editor de Texto</span>
           <div class="flex items-center gap-2">
             <select 
               v-model="editorType"
-              class="bg-white border border-secondary/20 rounded px-2 py-0.5 text-[10px] font-bold text-secondary focus:ring-0 focus:outline-none cursor-pointer mr-2"
+              class="bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded px-2 py-0.5 text-[10px] font-bold text-secondary dark:text-dark-text/60 focus:ring-0 focus:outline-none cursor-pointer mr-2"
             >
               <option value="markdown">Markdown</option>
               <option value="visual">Vista Visual (Milkdown)</option>
@@ -493,7 +488,7 @@ onUnmounted(() => {
             >
               ✨ Regenerar Selección
             </button>
-            <span class="text-[9px] font-mono text-secondary/40">borrador.md</span>
+            <span class="text-[9px] font-mono text-secondary/40 dark:text-dark-text/30">borrador.md</span>
           </div>
         </div>
 
@@ -506,10 +501,10 @@ onUnmounted(() => {
           leave-from-class="opacity-100 translate-y-0"
           leave-to-class="opacity-0 -translate-y-2"
         >
-          <div v-if="showRegenInput" class="p-4 bg-primary/5 border-b border-secondary/10 flex flex-col gap-3">
+          <div v-if="showRegenInput" class="p-4 bg-primary/5 dark:bg-primary/10 border-b border-secondary/10 dark:border-dark-border flex flex-col gap-3">
             <div class="flex items-center justify-between">
               <label class="text-[10px] font-bold text-primary uppercase tracking-wider">Directrices para la IA</label>
-              <button @click="showRegenInput = false" class="text-secondary/40 hover:text-secondary">
+              <button @click="showRegenInput = false" class="text-secondary/40 dark:text-dark-text/30 hover:text-secondary dark:hover:text-dark-text">
                 <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -519,7 +514,7 @@ onUnmounted(() => {
                 @keydown.enter="confirmRegeneration"
                 type="text" 
                 placeholder="Ej: hazlo más profesional, resume este punto..." 
-                class="flex-1 bg-white border border-secondary/20 rounded-lg px-3 py-2 text-xs text-text focus:ring-1 focus:ring-primary focus:outline-none"
+                class="flex-1 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-lg px-3 py-2 text-xs text-text dark:text-dark-text focus:ring-1 focus:ring-primary focus:outline-none transition-colors"
               />
               <button 
                 @click="confirmRegeneration"
@@ -533,11 +528,11 @@ onUnmounted(() => {
         </transition>
 
         <!-- Diff Review Area -->
-        <div v-if="isReviewingRegen" class="flex-1 overflow-hidden flex flex-col bg-white">
-          <div class="px-6 py-4 border-b border-secondary/10 flex items-center justify-between bg-white shadow-sm z-10">
-            <h3 class="text-xs font-bold text-text uppercase tracking-widest">Revisar Cambios</h3>
+        <div v-if="isReviewingRegen" class="flex-1 overflow-hidden flex flex-col bg-background dark:bg-dark-background">
+          <div class="px-6 py-4 border-b border-secondary/10 dark:border-dark-border flex items-center justify-between bg-background dark:bg-dark-background shadow-sm z-10 transition-colors">
+            <h3 class="text-xs font-bold text-text dark:text-dark-text uppercase tracking-widest">Revisar Cambios</h3>
             <div class="flex gap-2">
-              <button @click="cancelRegen" class="px-3 py-1.5 text-xs font-bold text-secondary bg-white border border-secondary/20 rounded-lg hover:bg-secondary/5 transition-colors">
+              <button @click="cancelRegen" class="px-3 py-1.5 text-xs font-bold text-secondary dark:text-dark-text/60 bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-lg hover:bg-secondary/5 dark:hover:bg-dark-background transition-colors">
                 Descartar
               </button>
               <button @click="acceptRegen" class="px-3 py-1.5 text-xs font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
@@ -545,14 +540,14 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
-          <div class="flex-1 flex divide-x divide-secondary/10 overflow-hidden">
+          <div class="flex-1 flex divide-x divide-secondary/10 dark:divide-dark-border overflow-hidden">
             <div class="flex-1 flex flex-col">
-              <div class="px-4 py-2 bg-red-50/50 border-b border-secondary/10 text-[10px] font-bold text-red-600 uppercase">Original</div>
-              <div class="flex-1 p-6 overflow-y-auto bg-red-50/30 text-sm font-mono text-red-800 line-through decoration-red-400 whitespace-pre-wrap leading-relaxed">{{ selectedText }}</div>
+              <div class="px-4 py-2 bg-red-50/50 dark:bg-red-900/10 border-b border-secondary/10 dark:border-dark-border text-[10px] font-bold text-red-600 dark:text-red-400 uppercase">Original</div>
+              <div class="flex-1 p-6 overflow-y-auto bg-red-50/30 dark:bg-red-900/5 text-sm font-mono text-red-800 dark:text-red-300 line-through decoration-red-400 dark:decoration-red-600 whitespace-pre-wrap leading-relaxed">{{ selectedText }}</div>
             </div>
             <div class="flex-1 flex flex-col">
-              <div class="px-4 py-2 bg-green-50/50 border-b border-secondary/10 text-[10px] font-bold text-green-600 uppercase">Nueva Versión</div>
-              <div class="flex-1 p-6 overflow-y-auto bg-green-50/30 text-sm font-mono text-green-800 whitespace-pre-wrap leading-relaxed">{{ newVersion }}</div>
+              <div class="px-4 py-2 bg-green-50/50 dark:bg-green-900/10 border-b border-secondary/10 dark:border-dark-border text-[10px] font-bold text-green-600 dark:text-green-400 uppercase">Nueva Versión</div>
+              <div class="flex-1 p-6 overflow-y-auto bg-green-50/30 dark:bg-green-900/5 text-sm font-mono text-green-800 dark:text-green-200 whitespace-pre-wrap leading-relaxed">{{ newVersion }}</div>
             </div>
           </div>
         </div>
@@ -565,19 +560,19 @@ onUnmounted(() => {
             v-else-if="editorType === 'markdown' && !isReviewingRegen"
             ref="markdownEditor"
             v-model="generatedMarkdown"
-            class="flex-1 w-full p-8 text-sm font-mono border-0 focus:ring-0 resize-none bg-transparent text-slate-800 leading-relaxed overflow-y-auto custom-scrollbar"
+            class="flex-1 w-full p-8 text-sm font-mono border-0 focus:ring-0 resize-none bg-transparent text-text dark:text-dark-text leading-relaxed overflow-y-auto custom-scrollbar transition-colors"
             placeholder="Escribe tu artículo aquí..."
           ></textarea>
       </div>
 
       <!-- PREVIEW PANE -->
-      <div class="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
-        <div class="h-11 px-4 bg-background border-b border-secondary/10 flex items-center justify-between shrink-0">
+      <div class="flex-1 flex flex-col min-w-0 min-h-0 bg-background dark:bg-dark-background transition-colors">
+        <div class="h-11 px-4 bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border flex items-center justify-between shrink-0">
           <div class="flex items-center gap-4">
-            <span class="text-[10px] font-black text-secondary/40 uppercase tracking-widest leading-none">Vista Previa</span>
+            <span class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest leading-none">Vista Previa</span>
             <select 
               v-model="previewViewMode"
-              class="bg-white border border-secondary/20 rounded px-2 py-0.5 text-[10px] font-bold text-secondary focus:ring-0 focus:outline-none cursor-pointer"
+              class="bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded px-2 py-0.5 text-[10px] font-bold text-secondary dark:text-dark-text/60 focus:ring-0 focus:outline-none cursor-pointer transition-colors"
             >
               <option value="rendered">Visualización</option>
               <option value="html">Código HTML</option>
@@ -589,11 +584,11 @@ onUnmounted(() => {
               :class="[
                 'flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold border rounded transition-all',
                 isCopied 
-                  ? 'text-green-600 bg-green-50 border-green-200' 
+                  ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
                   : 'text-primary bg-primary/5 border-primary/20 hover:bg-primary/10'
               ]"
             >
-              <svg v-if="!isCopied" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+              <svg v-if="!isCopied" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 00(2 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
               <svg v-else class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
               {{ isCopied ? '¡Copiado!' : 'Copiar HTML' }}
             </button>
@@ -607,13 +602,13 @@ onUnmounted(() => {
           <div 
             v-if="previewViewMode === 'rendered'"
             v-html="renderedHtml" 
-            class="prose prose-slate prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl shadow-none"
+            class="prose prose-slate dark:prose-invert prose-indigo max-w-none prose-p:text-base prose-p:leading-relaxed prose-li:text-base prose-img:rounded-2xl shadow-none"
           ></div>
           <div v-else class="h-full">
             <textarea
               readonly
               :value="renderedHtml"
-              class="w-full h-full p-4 border border-secondary/10 rounded-xl bg-slate-50 text-xs font-mono text-secondary focus:ring-0 resize-none leading-relaxed"
+              class="w-full h-full p-4 border border-secondary/10 dark:border-dark-border rounded-xl bg-slate-50 dark:bg-dark-surface/30 text-xs font-mono text-secondary dark:text-dark-text/70 focus:ring-0 resize-none leading-relaxed transition-colors"
             ></textarea>
           </div>
         </div>

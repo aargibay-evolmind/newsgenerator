@@ -80,20 +80,23 @@ class GenerateArticleService
         }
 
         // Final Section
-        $prompt .= "\n**V. CIERRE E INTERACCIÓN (ORIENTADO A VENTA):**\n";
-        $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' sobre acceso, becas o modalidad online.\n";
-
+        $prompt .= "\n**V. CIERRE E INTERACCIÓN (ORIENTADO A VENTA - MÁXIMO 2 CTAs):**\n";
+        $prompt .= "- **Límite de Conversión:** Incluye únicamente **dos llamadas a la acción (CTAs)** en todo el artículo para no saturar al lector.\n";
+        
         if (!empty($relevantCourses)) {
-            $prompt .= "- **CTA FINAL (OBLIGATORIO):** En la sección de 'Siguientes Pasos' o en el párrafo final de 'Cierre', incluye de forma explícita y destacada el enlace al curso principal utilizando **exactamente su nombre** como texto del enlace. Por ejemplo: '[Nombre del Curso](URL)'.\n";
+            $prompt .= "- **CTA 1 (MITAD):** En la sección de mayor impacto (requisitos o salarios), incluye un enlace natural al curso principal.\n";
+            $prompt .= "- **CTA 2 (FINAL):** En la conclusión o sección de 'Siguientes Pasos', incluye de forma destacada el enlace al curso principal utilizando **exactamente su nombre** como texto del enlace. Por ejemplo: '[Nombre del Curso](URL)'.\n";
             $prompt .= "- **CURSOS SELECCIONADOS:**\n";
             foreach ($relevantCourses as $course) {
                 $prompt .= sprintf("  - %s: %s\n", $course['name'], $course['url']);
             }
         } else {
-            $prompt .= "- **CTA Contextual:** En las secciones de mayor valor (salarios o requisitos), incluye un puente natural como: '[Solicita información sobre este itinerario aquí](https://davante.es/contacto)'.\n";
+            $prompt .= "- **CTA 1 (MITAD):** En la sección de mayor valor, incluye: '[Solicita información sobre este itinerario aquí](https://davante.es/contacto)'.\n";
+            $prompt .= "- **CTA 2 (FINAL):** Al final del párrafo de cierre, repite el enlace de contacto de forma persuasiva.\n";
         }
 
-        $prompt .= "- **Cierre Persuasivo:** Un párrafo final potente que resalte la urgencia de titularse oficialmente para asegurar el éxito en 2026 e incluya la llamada a la acción al curso mencionado arriba.\n";
+        $prompt .= "- **Cierre Persuasivo:** Un párrafo final potente que resalte la urgencia de titularse oficialmente para asegurar el éxito en 2026 e incluya el CTA 2 mencionado arriba.\n";
+        $prompt .= "- **FAQ:** Finaliza con una sección de 'Preguntas Frecuentes' sobre acceso, becas o modalidad online.\n";
 
         $prompt .= "\n**VI. BLOQUE DE METADATOS (OPTIMIZADO PARA CTR - AL FINAL):**\n";
         $prompt .= "Tras finalizar el artículo, añade el bloque delimitado por ---METADATA---. Maximiza el CTR en buscadores usando palabras de poder y corchetes.\n";

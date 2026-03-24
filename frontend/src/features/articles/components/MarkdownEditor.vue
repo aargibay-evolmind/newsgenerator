@@ -48,7 +48,7 @@ const InnerEditor = defineComponent({
 </script>
 
 <template>
-  <div class="milkdown-container h-full w-full bg-white flex flex-col min-h-0">
+  <div class="milkdown-container crepe h-full w-full bg-background flex flex-col min-h-0">
     <MilkdownProvider>
       <InnerEditor 
         :model-value="modelValue"
@@ -68,7 +68,7 @@ const InnerEditor = defineComponent({
 */
 
 .milkdown-container {
-  @apply flex-1 flex flex-col min-h-0 w-full bg-white overflow-visible;
+  @apply flex-1 flex flex-col min-h-0 w-full bg-background overflow-visible;
 }
 
 .milkdown-inner-flex {
@@ -89,7 +89,7 @@ const InnerEditor = defineComponent({
 }
 
 :deep(.milkdown .ProseMirror) {
-  @apply leading-relaxed text-slate-800 outline-none;
+  @apply leading-relaxed text-slate-800 dark:text-dark-text outline-none;
   padding: 3rem 1.5rem !important; /* Slightly less padding to gain space */
   min-height: 100%;
   max-width: 680px !important; /* Further reduced to ensure it fits comfortably */
@@ -99,6 +99,6 @@ const InnerEditor = defineComponent({
 
 /* Toolbar style match */
 :deep(.milkdown .milkdown-menu) {
-  @apply border-b border-slate-100 bg-white flex-shrink-0 sticky top-0 z-10;
+  @apply border-b border-slate-100 dark:border-dark-border bg-background dark:bg-dark-surface flex-shrink-0 sticky top-0 z-10;
 }
 </style>

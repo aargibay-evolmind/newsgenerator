@@ -73,4 +73,39 @@ class GeminiService
 
         return $response->toArray();
     }
+
+    /**
+     * @param string $text
+     * @param string $model
+     * @return array<float>
+     */
+    public function getEmbedding(string $text, string $model = 'text-embedding-004'): array
+    {
+        $url = sprintf('https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent?key=%s', $model, $this->geminiApiKey);
+
+        $body = [
+            'model' => 'models/' . $model,
+            'content' => [
+                'parts' => [
+                    ['text' => $text]
+                ]
+            ]
+        ];
+
+        $response = $this->httpClient->request('POST', $url, [
+            'json' => $body,
+            'headers' => [
+                'Content-Type' => 'application/json',
+            ],
+            'timeout' => 10,
+        ]);
+
+        $data = $response->toArray();
+
+        if (isset($data['embedding']['values'])) {
+            return $data['embedding']['values'];
+        }
+
+        throw new \Exception('Failed to generate embedding from Gemini API.');
+    }
 }

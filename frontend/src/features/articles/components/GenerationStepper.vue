@@ -19,7 +19,7 @@ function goToStep(stepId: number) {
 </script>
 
 <template>
-  <div class="w-full bg-white border-b border-secondary/10 py-3 shrink-0">
+  <div class="w-full bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border py-3 shrink-0 transition-colors duration-300">
     <div class="max-w-xl mx-auto flex items-center justify-center gap-3 px-6">
       <template v-for="(step, index) in steps" :key="step.id">
         <!-- Step Item -->
@@ -37,14 +37,14 @@ function goToStep(stepId: number) {
                   ? 'bg-primary ring-4 ring-primary/20 scale-110' 
                   : modelValue > step.id
                     ? 'bg-primary'
-                    : 'bg-secondary/20 group-hover:bg-secondary/30'
+                    : 'bg-secondary/20 dark:bg-dark-surface group-hover:bg-secondary/30 dark:group-hover:bg-dark-border'
               ]"
             ></div>
             
             <span 
               class="text-[10px] uppercase tracking-widest font-black transition-colors"
               :class="[
-                 modelValue === step.id ? 'text-primary' : 'text-secondary/40'
+                 modelValue === step.id ? 'text-primary' : 'text-secondary/40 dark:text-dark-text/30'
               ]"
             >
               {{ step.label }}
@@ -55,7 +55,7 @@ function goToStep(stepId: number) {
         <!-- Connector line -->
         <div 
           v-if="index < steps.length - 1"
-          class="w-8 sm:w-16 h-[1px] bg-secondary/10"
+          class="w-8 sm:w-16 h-[1px] bg-secondary/10 dark:bg-dark-border"
         >
           <div 
             class="h-full bg-primary transition-all duration-700 ease-in-out"

@@ -6,10 +6,48 @@ class KnowledgeBaseService
 {
     private string $projectDir;
     private ?array $data = null;
+    private ?array $embeddings = null;
 
-    public function __construct(string $projectDir)
-    {
+    public function __construct(
+        string $projectDir,
+        private readonly GeminiService $geminiService
+    ) {
         $this->projectDir = $projectDir;
+    }
+
+    /**
+     * Pre-warms the embedding cache to avoid delays during generation.
+     * @return array{total: int, synced: int}
+     */
+    public function syncEmbeddings(): array
+    {
+        $allCourses = $this->loadData();
+        $allEmbeddings = $this->loadEmbeddings();
+        $synced = 0;
+        $needsSync = false;
+
+        foreach ($allCourses as $course) {
+            $contentKey = $course['category'] . '|' . $course['name'];
+            
+            if (!isset($allEmbeddings[$contentKey])) {
+                try {
+                    $allEmbeddings[$contentKey] = $this->geminiService->getEmbedding($course['category'] . ': ' . $course['name']);
+                    $synced++;
+                    $needsSync = true;
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+        }
+
+        if ($needsSync) {
+            $this->saveEmbeddings($allEmbeddings);
+        }
+
+        return [
+            'total' => count($allCourses),
+            'synced' => $synced
+        ];
     }
 
     /**
@@ -22,58 +60,60 @@ class KnowledgeBaseService
             return [];
         }
 
-        $contextNormalized = $this->normalize($context);
-        $contextWords = array_filter(explode(' ', $contextNormalized), fn($w) => strlen($w) > 3);
-        
+        // Ensure cache is ready (minimal check)
+        $this->syncEmbeddings();
+
+        // 1. Get embedding for the input context
+        try {
+            $contextVector = $this->geminiService->getEmbedding($context);
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        $allEmbeddings = $this->loadEmbeddings();
         $scoredCourses = [];
 
         foreach ($allCourses as $course) {
-            $score = 0;
-            $nameNormalized = $this->normalize($course['name']);
-            $categoryNormalized = $this->normalize($course['category']);
-            $courseWords = explode(' ', $nameNormalized);
-
-            foreach ($contextWords as $ctxWord) {
-                // 1. Exact word match (High priority)
-                if (in_array($ctxWord, $courseWords)) {
-                    $score += 25;
-                    continue;
-                }
-
-                // 2. Strong partial match (e.g. "mecanic" matching "mecanico" or "mecanica")
-                $ctxRoot = mb_substr($ctxWord, 0, 6);
-                foreach ($courseWords as $cWord) {
-                    if (strlen($cWord) > 4 && str_starts_with($cWord, $ctxRoot)) {
-                        $score += 15;
-                    }
-                }
-
-                // 3. Category relevance
-                if (str_contains($categoryNormalized, $ctxWord)) {
-                    $score += 10;
-                }
+            $contentKey = $course['category'] . '|' . $course['name'];
+            
+            if (!isset($allEmbeddings[$contentKey])) {
+                continue;
             }
 
-            if ($score > 0) {
-                $scoredCourses[] = ['score' => $score, 'course' => $course];
+            // 3. Calculate similarity
+            $similarity = $this->cosineSimilarity($contextVector, $allEmbeddings[$contentKey]);
+            
+            if ($similarity > 0.4) {
+                $scoredCourses[] = [
+                    'score' => $similarity,
+                    'course' => $course
+                ];
             }
         }
 
         // Sort by score descending
         usort($scoredCourses, fn($a, $b) => $b['score'] <=> $a['score']);
 
-        // Return top 5 courses
         return array_map(fn($item) => $item['course'], array_slice($scoredCourses, 0, 5));
     }
 
-    private function normalize(string $text): string
+    private function cosineSimilarity(array $vec1, array $vec2): float
     {
-        $text = mb_strtolower($text);
-        $chars = [
-            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u',
-            'ñ' => 'n', 'ü' => 'u'
-        ];
-        return strtr($text, $chars);
+        $dotProduct = 0;
+        $normA = 0;
+        $normB = 0;
+
+        foreach ($vec1 as $i => $val) {
+            $dotProduct += $val * $vec2[$i];
+            $normA += $val * $val;
+            $normB += $vec2[$i] * $vec2[$i];
+        }
+
+        if ($normA == 0 || $normB == 0) {
+            return 0;
+        }
+
+        return $dotProduct / (sqrt($normA) * sqrt($normB));
     }
 
     private function loadData(): array
@@ -92,5 +132,28 @@ class KnowledgeBaseService
 
         $this->data = $decoded['courses'] ?? [];
         return $this->data;
+    }
+
+    private function loadEmbeddings(): array
+    {
+        if ($this->embeddings !== null) {
+            return $this->embeddings;
+        }
+
+        $filePath = $this->projectDir . '/data/knowledge_base_embeddings.json';
+        if (!file_exists($filePath)) {
+            return [];
+        }
+
+        $json = file_get_contents($filePath);
+        $this->embeddings = json_decode($json, true) ?? [];
+        return $this->embeddings;
+    }
+
+    private function saveEmbeddings(array $embeddings): void
+    {
+        $filePath = $this->projectDir . '/data/knowledge_base_embeddings.json';
+        file_put_contents($filePath, json_encode($embeddings));
+        $this->embeddings = $embeddings;
     }
 }
