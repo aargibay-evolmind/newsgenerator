@@ -1,5 +1,5 @@
-<script lang="ts" setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+<script setup lang="ts">
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { renderMarkdown, cleanMarkdown } from '@/utils/markdown'
@@ -52,7 +52,7 @@ const selectionIndices = ref({ start: 0, end: 0 })
 const newVersion = ref('')
 const isReviewingRegen = ref(false)
 
-const showSaveDropdown = ref(false)
+const showDownloadDropdown = ref(false)
 const markdownEditor = ref<HTMLTextAreaElement | null>(null)
 const editorType = ref<'markdown' | 'visual'>('markdown')
 
@@ -122,13 +122,14 @@ function downloadArticle(format: 'markdown' | 'html') {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${filename}.txt`
+  const extension = format === 'html' ? 'html' : 'txt'
+  link.download = `${filename}.${extension}`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
   
-  showSaveDropdown.value = false
+  showDownloadDropdown.value = false
 }
 
 const renderedHtml = computed(() => renderMarkdown(generatedMarkdown.value))
@@ -232,7 +233,6 @@ function cancelRegen() {
 }
 
 function handleSave() {
-  showSaveDropdown.value = false
   emit('save')
 }
 
@@ -282,47 +282,50 @@ onUnmounted(() => {
           <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           {{ backPrompt || 'Volver' }}
         </button>
-        <div class="relative">
+        <div class="relative flex items-center gap-1.5">
           <button 
-            @click="showSaveDropdown = !showSaveDropdown"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-accent bg-accent/5 border border-accent/20 rounded-lg hover:bg-accent/10 transition-colors"
+            @click="handleSave"
+            :disabled="isSaving"
+            class="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-primary border border-primary rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 shadow-sm"
           >
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-            Guardar
+            <svg v-if="isSaving" class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+            {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar') }}
           </button>
-          
-          <!-- Dropdown -->
-          <div v-if="showSaveDropdown" class="absolute left-0 mt-2 w-48 bg-background dark:bg-dark-surface rounded-xl shadow-2xl border border-secondary/10 dark:border-dark-border py-2 z-50">
-            <button 
-              @click="handleSave"
-              :disabled="isSaving"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-accent hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors flex items-center gap-2 mb-1 disabled:opacity-50"
-            >
-              <svg v-if="isSaving" class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-              {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar Artículo') }}
-            </button>
-            <div class="px-3 py-2 border-b border-t border-secondary/5 dark:border-dark-border/40 mb-1 mt-1">
-              <span class="text-[10px] font-bold text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Descargar como</span>
-            </div>
-            <button 
-              @click="downloadArticle('markdown')"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
-            >
-              <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              Markdown (.txt)
-            </button>
-            <button 
-              @click="downloadArticle('html')"
-              class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
-            >
-              <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-              HTML (.txt)
-            </button>
-          </div>
 
-          <!-- Backdrop for closing dropdown -->
-          <div v-if="showSaveDropdown" @click="showSaveDropdown = false" class="fixed inset-0 z-40"></div>
+          <div class="relative">
+            <button 
+              @click="showDownloadDropdown = !showDownloadDropdown"
+              class="inline-flex items-center justify-center p-1.5 text-secondary dark:text-dark-text/40 bg-secondary/5 border border-secondary/10 rounded-lg hover:bg-secondary/10 transition-colors"
+              title="Opciones de descarga"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            
+            <!-- Download Dropdown -->
+            <div v-if="showDownloadDropdown" class="absolute left-0 mt-2 w-48 bg-background dark:bg-dark-surface rounded-xl shadow-2xl border border-secondary/10 dark:border-dark-border py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div class="px-3 py-1 mb-1">
+                <span class="text-[9px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Descargar como</span>
+              </div>
+              <button 
+                @click="downloadArticle('markdown')"
+                class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
+              >
+                <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                Markdown (.txt)
+              </button>
+              <button 
+                @click="downloadArticle('html')"
+                class="w-full text-left px-4 py-2 text-xs font-semibold text-text dark:text-dark-text hover:bg-primary/5 dark:hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
+              >
+                <svg class="h-3.5 w-3.5 text-secondary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                HTML (.html)
+              </button>
+            </div>
+
+            <!-- Backdrop for closing dropdown -->
+            <div v-if="showDownloadDropdown" @click="showDownloadDropdown = false" class="fixed inset-0 z-40"></div>
+          </div>
         </div>
         <div class="h-6 w-px bg-secondary/10 dark:bg-dark-border"></div>
       </div>
@@ -588,7 +591,7 @@ onUnmounted(() => {
                   : 'text-primary bg-primary/5 border-primary/20 hover:bg-primary/10'
               ]"
             >
-              <svg v-if="!isCopied" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 00(2 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+              <svg v-if="!isCopied" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
               <svg v-else class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
               {{ isCopied ? '¡Copiado!' : 'Copiar HTML' }}
             </button>

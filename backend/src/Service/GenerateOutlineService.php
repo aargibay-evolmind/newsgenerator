@@ -19,7 +19,7 @@ class GenerateOutlineService
      * @param string $additionalContext
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7): array
+    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7, ?string $contentMode = null): array
     {
         // LOAD RELEVANT COURSES FOR CONTEXTUAL OUTLINE
         $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
@@ -35,6 +35,20 @@ class GenerateOutlineService
 
         $prompt .= sprintf("**Público Objetivo:** %s\n", $audience);
         $prompt .= sprintf("**Intención de Búsqueda:** %s\n", $searchIntent);
+
+        // Content Mode specific instructions
+        if ($contentMode) {
+            $modeInstructions = match ($contentMode) {
+                'quick-guide' => "**MODO: GUÍA RÁPIDA.** Prioriza la brevedad y escaneabilidad. Los encabezados deben ser directos y orientados a la acción (\"Cómo...\", \"Pasos para...\", \"Requisitos de...\"). Cada sección debe poder leerse de forma independiente. Favorece listas y bullet points sobre párrafos largos.",
+                'news-brief' => "**MODO: NOTICIA BREVE.** Usa estructura de pirámide invertida: lo más importante primero. Los encabezados deben ser informativos y concisos. El contenido debe ir de lo general a lo específico. Prioriza datos, cifras y hechos verificables.",
+                'deep-dive' => "**MODO: INMERSIVO.** Diseña un artículo exhaustivo y detallado. Los encabezados deben cubrir el tema en profundidad, incluyendo contexto, análisis, comparativas y proyecciones. Cada sección debe ser sustancial con múltiples sub-puntos. Incluye datos, estadísticas y análisis experto.",
+                'storytelling' => "**MODO: CRÓNICA.** Estructura narrativa con arco dramático: gancho inicial, desarrollo con tensión, clímax informativo y cierre inspirador. Los encabezados deben ser evocadores y descriptivos, no meramente informativos. Usa títulos que generen curiosidad y emoción.",
+                default => ''
+            };
+            if ($modeInstructions) {
+                $prompt .= $modeInstructions . "\n";
+            }
+        }
 
         if (!empty(trim($additionalContext))) {
             $prompt .= sprintf("**Directrices de Negocio/Contexto:** %s\n", $additionalContext);
@@ -92,7 +106,7 @@ Considera incluir secciones que faciliten la integración natural de estos curso
             'required' => ['outline', 'suggestedLinks']
         ];
 
-        $models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        $models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
         $result = $this->gemini->generateContent($prompt, $models, $schema);
 
         // Parse JSON output
@@ -113,6 +127,7 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                         'id' => time() + $index, // Mocked ID
                         'text' => $item['text'] ?? 'Nuevo Encabezado',
                         'included' => true,
+                        'infographic' => false,
                         'budget' => 'medium'
                     ];
                 }

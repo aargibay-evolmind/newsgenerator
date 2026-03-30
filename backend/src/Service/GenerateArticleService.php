@@ -6,7 +6,8 @@ class GenerateArticleService
 {
     public function __construct(
         private readonly GeminiService $gemini,
-        private readonly KnowledgeBaseService $knowledgeBase
+        private readonly KnowledgeBaseService $knowledgeBase,
+        private readonly InfographicService $infographicService
     ) {}
 
     /**
@@ -26,6 +27,13 @@ class GenerateArticleService
         $searchIntent = $payload['searchIntent'] ?? 'Informativo';
         $additionalContext = $payload['additionalContext'] ?? '';
         $keyPoints = $payload['keyPoints'] ?? [];
+        $contentMode = $payload['contentMode'] ?? null;
+
+        $logFile = '/tmp/infographic_debug.log';
+        file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] Starting article generation. Outline items: " . count($outline) . "\n", FILE_APPEND);
+        foreach ($outline as $idx => $item) {
+            file_put_contents($logFile, "Item $idx: " . ($item['text'] ?? 'no text') . " - Infographic: " . (isset($item['infographic']) ? ($item['infographic'] ? 'true' : 'false') : 'not set') . "\n", FILE_APPEND);
+        }
 
         // LOAD RELEVANT COURSES (SMART FILTERING)
         $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
@@ -35,8 +43,24 @@ class GenerateArticleService
         if ($tone < 30) $toneStr = "Formal, Profesional, y Corporativo.";
         if ($tone > 70) $toneStr = "Cercano, Amigable, y muy Conversacional.";
 
+        // Content Mode writing style
+        $modeStyleInstructions = '';
+        if ($contentMode) {
+            $modeStyleInstructions = match ($contentMode) {
+                'quick-guide' => "\n### ESTILO DE REDACCIÓN: GUÍA RÁPIDA\n- Párrafos de **máximo 3 frases**. Prioriza bullet points y listas numeradas.\n- Usa negritas liberalmente para resaltar datos clave y facilitar el escaneo.\n- Cada sección debe responder UNA pregunta concreta. Sin rodeos ni contexto innecesario.\n- Objetivo: que el lector encuentre su respuesta en **menos de 2 minutos**.\n",
+                'news-brief' => "\n### ESTILO DE REDACCIÓN: NOTICIA BREVE\n- Estructura de **pirámide invertida**: la información más importante va primero.\n- Párrafos de **2-4 frases**, directos y factuales.\n- Incluye datos, cifras y fuentes en cada sección.\n- Tono periodístico neutral. Evita opiniones y lenguaje especulativo.\n- Objetivo: informar de forma **concisa y verificable**.\n",
+                'deep-dive' => "\n### ESTILO DE REDACCIÓN: INMERSIVO\n- Párrafos ricos y detallados de **5-8 frases**. Permite explicaciones extensas.\n- Incluye análisis, contexto histórico, comparativas y proyecciones.\n- Usa sub-encabezados (H3) dentro de cada sección para organizar la profundidad.\n- Integra datos estadísticos, tablas comparativas y ejemplos reales.\n- Objetivo: que el lector se convierta en un **experto** tras la lectura.\n",
+                'storytelling' => "\n### ESTILO DE REDACCIÓN: CRÓNICA\n- Estilo **narrativo y envolvente**. Usa la técnica del storytelling.\n- Comienza cada sección con un gancho emocional o una anécdota breve.\n- Párrafos de **4-6 frases**, con ritmo variable (frases cortas + desarrollo).\n- Emplea metáforas, preguntas retóricas y transiciones fluidas entre secciones.\n- Objetivo: que el lector se sienta **inmerso en una historia**, no leyendo un manual.\n",
+                default => ''
+            };
+        }
+
         // Build the Prompt Guidelines (Unified SEO + Conversion + Structural)
         $prompt = "Eres un **Estratega de Conversión SEO y Orientador Académico Senior** del equipo de ArticleMind, especializado en el ecosistema educativo español (FPs, Certificados y Cursos Técnicos). Tu objetivo es transformar los esquemas técnicos en guías definitivas de alta autoridad que conviertan lectores en alumnos matriculados.\n\n";
+
+        if ($modeStyleInstructions) {
+            $prompt .= $modeStyleInstructions;
+        }
 
         $prompt .= "### I. FILOSOFÍA EDITORIAL Y CONTEXTO 2026 (BASE):\n";
         $prompt .= "- **Actualización 2026-2027:** El contenido debe estar plenamente alineado con la **Nueva Ley de FP** (grados A-E, Dualidad intensiva) y los plazos de admisión vigentes.\n";
@@ -69,7 +93,8 @@ class GenerateArticleService
 
         // Section Outline
         $prompt .= "\n**IV. ESQUEMA DE SECCIONES (SIGUE ESTRICTAMENTE):**\n";
-        foreach ($outline as $item) {
+        $infographicMarkers = [];
+        foreach ($outline as $index => $item) {
             $budget = $item['budget'] ?? 'medium';
             $budgetInstr = match($budget) {
                 'short' => " (Breve y conciso)",
@@ -77,6 +102,10 @@ class GenerateArticleService
                 default => " (Extensión media)"
             };
             $prompt .= sprintf("- %s%s\n", $item['text'] ?? 'Sección', $budgetInstr);
+            
+            if (!empty($item['infographic'])) {
+                $infographicMarkers[$index] = $item['text'] ?? 'Sección';
+            }
         }
 
         // Final Section
@@ -119,12 +148,47 @@ class GenerateArticleService
 
         $prompt .= "\n\nRedacta el contenido completo en español utilizando Markdown válido.";
 
-        // Direct call to Gemini WITHOUT schema constraints for free-form markdown response
-        $models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+        $models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
         $result = $this->gemini->generateContent($prompt, $models);
 
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
-            return $result['candidates'][0]['content']['parts'][0]['text'];
+            $markdown = $result['candidates'][0]['content']['parts'][0]['text'];
+            file_put_contents($logFile, "Article markdown generated. Length: " . strlen($markdown) . " chars. Preview: " . substr($markdown, 0, 500) . "...\n", FILE_APPEND);
+
+            // Inject Infographics
+            if (!empty($infographicMarkers)) {
+                // Wait a bit to avoid hitting 429 rate limits after the main article generation
+                sleep(2);
+                foreach ($infographicMarkers as $headerText) {
+                    try {
+                        file_put_contents($logFile, "Generating infographic for: " . $headerText . "\n", FILE_APPEND);
+                        $injectedContent = $this->infographicService->generateForSection($headerText, $title);
+                        
+                        // Flexible regex for headers: matches any # level followed by the header text
+                        // Allows for optional numbering like "1. ", "1.", etc.
+                        $pattern = '/^(#+\s*)(?:\d+[\.\)]?\s*)?' . preg_quote($headerText, '/') . '(.*)$/mi';
+                        $count = 0;
+                        $newMarkdown = preg_replace($pattern, "$0$injectedContent", $markdown, 1, $count);
+                        
+                        if ($count > 0) {
+                            $markdown = $newMarkdown;
+                            file_put_contents($logFile, "Successfully injected infographic for: " . $headerText . "\n", FILE_APPEND);
+                        } else {
+                            file_put_contents($logFile, "FAILED to inject infographic for: " . $headerText . ". Regex did not match. Target: $pattern\n", FILE_APPEND);
+                            // Backup: very loose match
+                            $loosePattern = '/' . preg_quote($headerText, '/') . '/i';
+                            $markdown = preg_replace($loosePattern, "$0$injectedContent", $markdown, 1, $count);
+                            if ($count > 0) {
+                                file_put_contents($logFile, "Injected with LOOSE pattern for: " . $headerText . "\n", FILE_APPEND);
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        file_put_contents($logFile, "Exception during infographic generation: " . $e->getMessage() . "\n", FILE_APPEND);
+                    }
+                }
+            }
+
+            return $markdown;
         }
 
         throw new \Exception('Failed to generate full markdown article content from AI.');

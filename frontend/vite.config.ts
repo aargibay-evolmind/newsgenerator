@@ -14,6 +14,11 @@ export default defineConfig({
       '/api': {
         target: 'http://backend.newsgenerator.test',
         changeOrigin: true,
+        timeout: 300000,
+      },
+      '/uploads': {
+        target: 'http://backend.newsgenerator.test',
+        changeOrigin: true,
       }
     }
   },

@@ -2,9 +2,7 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSavedArticle, useDeleteArticle } from '../composables';
-import { marked } from 'marked';
 import MainHeader from '@/components/MainHeader.vue';
-import DOMPurify from 'dompurify';
 import { renderMarkdown } from '@/utils/markdown';
 
 const route = useRoute();
@@ -23,70 +21,87 @@ function goBack() {
 function handleDelete() {
   if (confirm('¿Estás seguro de que quieres eliminar este artículo?')) {
     deleteArticle(articleId, {
-      onSuccess: () => {
-        router.push({ name: 'SavedArticles' });
-      }
+      onSuccess: () => router.push({ name: 'SavedArticles' })
     });
   }
 }
 </script>
 
 <template>
-  <div class="bg-background dark:bg-dark-background text-text dark:text-dark-text font-sans flex flex-col min-h-screen pb-20 transition-colors">
+  <div class="bg-background dark:bg-dark-background text-text dark:text-dark-text font-sans min-h-screen flex flex-col transition-colors">
     <MainHeader />
+    
+    <main class="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-8 py-10 pb-24">
+      <!-- Loading State -->
+      <div v-if="isLoading" class="flex flex-col items-center justify-center py-20">
+        <svg class="animate-spin h-10 w-10 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <span class="text-secondary font-bold">Cargando artículo...</span>
+      </div>
 
-    <main class="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-8 py-8">
-      <div v-if="isLoading" class="flex justify-center items-center py-20">
-        <svg class="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+      <!-- Error State -->
+      <div v-else-if="isError || !article" class="bg-red-50 dark:bg-red-900/10 p-10 rounded-[3rem] border border-red-100 flex flex-col items-center text-center">
+        <span class="text-4xl mb-4">❌</span>
+        <h2 class="text-xl font-bold text-red-900 mb-2">Error al cargar el artículo</h2>
+        <p class="text-red-700/70 mb-6">No pudimos encontrar el artículo solicitado.</p>
+        <button @click="goBack" class="px-6 py-3 bg-red-600 text-white rounded-2xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200">Volver al panel</button>
       </div>
-      <div v-else-if="isError || !article" class="text-red-500 dark:text-red-400 py-10 bg-red-50 dark:bg-red-900/10 px-6 rounded-xl border border-red-100 dark:border-red-900/30 transition-colors">
-        Error al cargar el artículo.
-      </div>
-      <div v-else class="space-y-6">
-        <!-- Breadcrumbs / Actions -->
-        <div class="flex items-center justify-between gap-4 mt-4">
-          <button @click="goBack" class="inline-flex items-center gap-2 text-xs font-bold text-secondary dark:text-dark-text/60 hover:text-primary transition-colors">
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-            Volver al Panel de Control
+
+      <!-- Article Content -->
+      <div v-else class="animate-in fade-in duration-700">
+        <!-- Navigation -->
+        <div class="flex items-center justify-between mb-10">
+          <button 
+            @click="goBack"
+            class="flex items-center gap-2 text-sm font-bold text-secondary hover:text-primary transition-colors group"
+          >
+            <svg class="h-4 w-4 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7" /></svg>
+            Volver
           </button>
           
           <div class="flex items-center gap-3">
             <button 
               @click="handleDelete"
-              class="inline-flex items-center justify-center gap-2 rounded-xl bg-background dark:bg-dark-surface border border-red-200 dark:border-red-900 px-5 py-2.5 text-xs font-bold text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all shadow-sm"
+              class="p-2 text-secondary/30 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+              title="Eliminar artículo"
             >
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Eliminar
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
             </button>
-            <router-link :to="{ name: 'EditSavedArticle', params: { id: articleId } }" class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/10">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            <router-link 
+              :to="{ name: 'EditSavedArticle', params: { id: articleId } }"
+              class="px-5 py-2.5 bg-primary text-white text-sm font-bold rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+            >
               Editar Artículo
             </router-link>
           </div>
         </div>
 
-        <div class="bg-background dark:bg-dark-surface rounded-3xl shadow-xl border border-slate-100 dark:border-dark-border overflow-hidden ring-1 ring-text/5 dark:ring-white/5 transition-colors">
-          <!-- Header -->
-          <div class="px-8 py-8 border-b border-slate-100 dark:border-dark-border bg-slate-50/50 dark:bg-dark-background/50">
-            <h1 class="text-3xl font-extrabold text-slate-900 dark:text-dark-text leading-tight mb-4">{{ article.title }}</h1>
-            <div class="flex items-center gap-4 text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">
-              <div class="flex items-center gap-1.5">
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                {{ new Date(article.created_at).toLocaleDateString() }}
-              </div>
-            </div>
+        <!-- Article Header -->
+        <header class="mb-12">
+          <div class="flex items-center gap-3 mb-4">
+            <span v-if="article.data?.readingTime" class="px-2.5 py-1 bg-primary/5 text-[10px] font-black text-primary rounded-full uppercase tracking-wider flex items-center gap-1">
+              <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              {{ article.data.readingTime }} min lectura
+            </span>
+            <span class="text-[10px] font-bold text-secondary tracking-widest uppercase">{{ new Date(article.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) }}</span>
           </div>
-          
-          <!-- Content -->
-          <div class="p-8 sm:p-12">
-            <div 
-              v-html="renderedHtml" 
-              class="prose prose-slate dark:prose-invert max-w-none prose-headings:font-extrabold prose-headings:tracking-tight prose-a:text-primary prose-img:rounded-3xl prose-img:shadow-lg prose-details:p-0 prose-details:bg-transparent prose-details:border-0 prose-summary:list-none prose-summary:p-0"
-            ></div>
+          <h1 class="text-4xl sm:text-5xl font-black tracking-tight text-text leading-[1.1] mb-6">
+            {{ article.title }}
+          </h1>
+          <div v-if="article.data?.keywords?.length" class="flex flex-wrap gap-2">
+            <span v-for="tag in article.data.keywords" :key="tag" class="text-[10px] font-bold text-secondary/50 bg-secondary/5 px-2.5 py-1 rounded-lg">#{{ tag.toLowerCase().replace(/\s+/g, '') }}</span>
           </div>
-        </div>
+        </header>
+
+        <!-- Preview View (Rendered) -->
+        <article 
+          class="prose prose-slate prose-lg dark:prose-invert max-w-none 
+                 prose-h2:text-2xl prose-h2:font-black prose-h2:tracking-tight prose-h2:mt-12 prose-h2:mb-6
+                 prose-p:text-slate-600 dark:prose-p:text-dark-text/70 prose-p:leading-relaxed prose-p:mb-6
+                 prose-img:rounded-[2rem] prose-img:shadow-2xl prose-img:my-10
+                 prose-strong:text-slate-900 dark:prose-strong:text-dark-text prose-strong:font-bold
+                 prose-a:text-primary prose-a:no-underline hover:prose-a:underline"
+          v-html="renderedHtml"
+        ></article>
       </div>
     </main>
   </div>
@@ -95,46 +110,28 @@ function handleDelete() {
 <style scoped>
 @reference "../../../assets/main.css";
 
-/* Custom TOC Styles */
-:deep(details) {
-  @apply bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-xl my-6 overflow-hidden transition-all duration-300;
+/* Custom styles for rendered article */
+:deep(h2) {
+  @apply text-3xl font-black tracking-tight mt-12 mb-6 text-slate-900 dark:text-dark-text;
 }
 
-:deep(summary) {
-  @apply px-5 py-3 cursor-pointer font-bold text-text dark:text-dark-text bg-secondary/5 dark:bg-primary/10 hover:bg-secondary/10 dark:hover:bg-primary/20 transition-colors list-none flex items-center gap-2;
+:deep(p) {
+  @apply text-slate-600 dark:text-dark-text/70 leading-relaxed mb-6;
 }
 
-:deep(summary::-webkit-details-marker) {
-  display: none;
+:deep(ul), :deep(ol) {
+  @apply mb-8 space-y-3;
 }
 
-:deep(summary::before) {
-  content: "▸";
+:deep(li) {
+  @apply text-slate-600 dark:text-dark-text/70;
 }
 
-:deep(details[open] summary::before) {
-  content: "▾";
+:deep(img) {
+  @apply rounded-[2rem] shadow-2xl my-12 mx-auto block;
 }
 
-:deep(details > ul) {
-  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10 dark:border-dark-border px-6 sm:px-12 lg:px-16;
-}
-
-:deep(details > ul li a) {
-  @apply text-primary hover:text-primary/80 no-underline transition-colors block text-sm font-medium;
-}
-
-/* Table Responsive Fix */
-:deep(.prose table) {
-  @apply block w-full overflow-x-auto border-collapse;
-  -webkit-overflow-scrolling: touch;
-}
-
-:deep(.prose thead) {
-  @apply bg-secondary/5 dark:bg-primary/10;
-}
-
-:deep(.prose th), :deep(.prose td) {
-  @apply border border-secondary/10 dark:border-dark-border px-4 py-2 min-w-[120px] dark:text-dark-text/80;
+:deep(blockquote) {
+  @apply border-l-4 border-primary/20 pl-6 italic text-slate-500 my-10 bg-slate-50/50 dark:bg-dark-surface p-8 rounded-r-3xl;
 }
 </style>

@@ -3,10 +3,12 @@ import { ref, computed } from 'vue';
 import { useSavedArticles, useDeleteArticle } from '../composables';
 import MainHeader from '@/components/MainHeader.vue';
 import { useRouter } from 'vue-router';
+import { useArticleStore } from '../store/articleStore';
 
 const router = useRouter();
 const { data: articles, isLoading, isError } = useSavedArticles();
 const { mutate: deleteArticle } = useDeleteArticle();
+const { getToneLabel } = useArticleStore();
 
 const searchQuery = ref('');
 const sortBy = ref<'newest' | 'oldest' | 'alphabetical'>('newest');
@@ -40,7 +42,7 @@ const stats = computed(() => {
 const filteredArticles = computed(() => {
   if (!articles.value) return [];
   
-  let result = articles.value.filter((art: any) => 
+  const result = articles.value.filter((art: any) => 
     art.title.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
   
@@ -54,12 +56,6 @@ const filteredArticles = computed(() => {
   
   return result;
 });
-
-function getToneLabel(val: number) {
-  if (val < 30) return 'Formal';
-  if (val > 70) return 'Amigable';
-  return 'Informativo';
-}
 </script>
 
 <template>
@@ -70,7 +66,7 @@ function getToneLabel(val: number) {
       <!-- Header Section -->
       <div class="mb-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 class="text-4xl font-black text-text dark:text-dark-text tracking-tighter italic">Panel de Control</h1>
+          <h1 class="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">Panel de Control</h1>
           <p class="text-sm text-secondary dark:text-dark-text/60 mt-2 font-medium">Gestiona tu estrategia de contenidos y artículos generados.</p>
         </div>
         
@@ -186,7 +182,7 @@ function getToneLabel(val: number) {
           <div 
             v-for="article in filteredArticles" 
             :key="article.id"
-            class="bg-background dark:bg-dark-surface rounded-[2rem] shadow-sm border border-secondary/10 dark:border-dark-border p-7 flex flex-col hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer group relative border-b-4 border-b-transparent hover:border-b-primary"
+            class="bg-background dark:bg-dark-surface rounded-[2rem] shadow-sm border border-secondary/10 dark:border-dark-border p-7 flex flex-col hover:shadow-xl hover:shadow-primary/5 transition-all cursor-pointer group relative"
             @click="goToArticle(article.id)"
           >
             <!-- Metadata Badges -->

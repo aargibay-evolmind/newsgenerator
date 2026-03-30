@@ -30,12 +30,12 @@ class SuggestTopicsService
         }
 
         $prompt .= "### CATEGORÍAS DE INTENCIÓN REQUERIDAS:\n";
-        $prompt .= "1. **Informativo/Tendencia:** (Ej: 'Nuevas becas FP 2026' o 'Cambios en la Ley de Educación').\n";
-        $prompt .= "2. **Comercial/Transaccional:** (Ej: 'Los 5 cursos con más salida' o '¿Cuánto gana un Técnico en X?').\n";
-        $prompt .= "3. **Guía de Autoridad:** (Ej: 'Cómo conseguir tu título oficial en menos de 1 año').\n\n";
+        $prompt .= "1. **Informativo/Tendencia:** .\n";
+        $prompt .= "2. **Comercial/Transaccional:** .\n";
+        $prompt .= "3. **Guía de Autoridad:** .\n\n";
 
         $prompt .= sprintf(
-            "Sugiere 3 titulares magnéticos para el tema: '%s'. Deben ser ultra-clicables, resaltar el beneficio económico (sueldos) o profesional (empleo) y estar optimizados para SEO 2026. Solo devuelve los conceptos/títulos.",
+            "Sugiere 3 titulares magnéticos para el tema: '%s'. Deben ser ultra-clicables, resaltar el beneficio profesional y estar optimizados para SEO 2026. Solo devuelve los conceptos/títulos.",
             $topic ?: "Tendencias en Formación y Empleo 2026"
         );
 

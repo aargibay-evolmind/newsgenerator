@@ -23,16 +23,32 @@ class GeminiService
         $lastException = null;
 
         foreach ($models as $candidate) {
-            try {
-                return $this->attemptGeneration($prompt, $candidate, $schema);
-            } catch (\Exception $e) {
-                $lastException = $e;
-                // Retry only on rate limit (429) or server error (503)
-                if (str_contains($e->getMessage(), '429') || str_contains($e->getMessage(), '503')) {
-                    continue;
+            $retries = 0;
+            $maxRetries = 2; // Retry each model up to 2 times
+            
+            while ($retries <= $maxRetries) {
+                try {
+                    return $this->attemptGeneration($prompt, $candidate, $schema);
+                } catch (\Exception $e) {
+                    $lastException = $e;
+                    $isRateLimit = str_contains($e->getMessage(), '429');
+                    $isServerError = str_contains($e->getMessage(), '500') || str_contains($e->getMessage(), '503');
+                    
+                    if ($isRateLimit || $isServerError) {
+                        $retries++;
+                        if ($retries <= $maxRetries) {
+                            // Wait longer if it's a rate limit
+                            $waitTime = $isRateLimit ? 3 : 1;
+                            sleep($waitTime);
+                            continue;
+                        }
+                    }
+                    // If not retryable or max retries reached, move to next model
+                    break;
                 }
-                throw $e;
             }
+            // Small gap between different models to avoid bursting
+            usleep(500000); // 0.5s
         }
 
         throw new \Exception(sprintf(
@@ -146,4 +162,49 @@ class GeminiService
 
         throw new \Exception('Failed to generate batch embeddings from Gemini API.');
     }
+
+    /**
+     * @param string $prompt
+     * @param string $model
+     * @return array<string, mixed>
+     */
+    public function generateImage(string $prompt, string $model = 'gemini-2.0-flash-exp'): array
+    {
+        $url = sprintf('https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s', $model, $this->geminiApiKey);
+
+        $body = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $prompt]
+                    ]
+                ]
+            ],
+            'generationConfig' => [
+                'responseModalities' => ['IMAGE']
+            ]
+        ];
+
+        try {
+            $response = $this->httpClient->request('POST', $url, [
+                'json' => $body,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                ]
+            ]);
+
+            return $response->toArray();
+        } catch (\Symfony\Contracts\HttpClient\Exception\ExceptionInterface $e) {
+            $errorBody = "No response body available from server.";
+            if (method_exists($e, 'getResponse')) {
+                try {
+                    $errorBody = $e->getResponse()->getContent(false);
+                } catch (\Exception $inner) {}
+            }
+            throw new \Exception(sprintf('%s | Server Response Body: %s', $e->getMessage(), $errorBody), 0, $e);
+        }
+    }
 }
+
+

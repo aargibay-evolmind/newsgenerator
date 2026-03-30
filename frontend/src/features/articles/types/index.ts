@@ -28,6 +28,7 @@ export interface OutlineItem {
   id: number;
   text: string;
   included: boolean;
+  infographic?: boolean;
   budget?: 'short' | 'medium' | 'long';
 }
 

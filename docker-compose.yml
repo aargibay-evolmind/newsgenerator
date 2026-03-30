@@ -46,6 +46,7 @@ services:
 
   mysql:
     image: mysql:8.0
+    command: --sort_buffer_size=128M
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: database

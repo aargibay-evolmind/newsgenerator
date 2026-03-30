@@ -25,6 +25,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Copy custom PHP configuration
+COPY custom.ini /usr/local/etc/php/conf.d/custom.ini
+
 # Use existing www-data user and modify its UID/GID
 RUN usermod -u ${UID} www-data && groupmod -g ${GID} www-data
 

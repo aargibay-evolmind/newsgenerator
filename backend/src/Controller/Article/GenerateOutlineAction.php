@@ -33,13 +33,14 @@ class GenerateOutlineAction
         $additionalContext = $payload['additionalContext'] ?? '';
         $tone = (int) ($payload['tone'] ?? 0);
         $sectionCount = max(5, min(10, (int) ($payload['sectionCount'] ?? 7)));
+        $contentMode = $payload['contentMode'] ?? null;
 
         if (empty(trim($title))) {
             return $this->responder->respondError('Title parameter is required.', 400);
         }
 
         try {
-            $data = $this->domainService->generate($title, $keyPoints, $keywords, $urls, $audience, $searchIntent, $additionalContext, $tone, $sectionCount);
+            $data = $this->domainService->generate($title, $keyPoints, $keywords, $urls, $audience, $searchIntent, $additionalContext, $tone, $sectionCount, $contentMode);
             return $this->responder->respond($data);
         } catch (\Exception $e) {
             return $this->responder->respondError($e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), 500);

@@ -24,8 +24,9 @@ const {
   referenceUrls,
   scrapedReferences,
   additionalContext,
-  audience,
+  audienceValue,
   searchIntent,
+  contentMode,
   toneValue,
   includeLists,
   includeTables,
@@ -34,6 +35,10 @@ const {
   suggestedLinks,
   uploadedImages
 } = storeToRefs(store)
+const { 
+    getAudienceLabel,
+    getToneLabel
+  } = store
 const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSuggestTopics()
 const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
 const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerateOutline()
@@ -251,16 +256,17 @@ async function saveArticleToDb() {
         tone: toneValue.value,
         keywords: [...tags.value],
         readingTime,
-        audience: audience.value,
+        audience: getAudienceLabel(audienceValue.value),
         searchIntent: searchIntent.value,
         metadata: articleMetadata.value
       }
     });
     successMessage.value = "✅ Artículo guardado correctamente.";
     setTimeout(() => { successMessage.value = null }, 4000);
-  } catch (error) {
-    errorMessage.value = "❌ Error al guardar el artículo.";
-    setTimeout(() => { errorMessage.value = null }, 5000);
+  } catch (error: any) {
+    console.error('Save error:', error);
+    errorMessage.value = `❌ Error al guardar: ${error.message || 'Error desconocido'}`;
+    setTimeout(() => { errorMessage.value = null }, 6000);
   }
 }
 
@@ -375,12 +381,9 @@ async function handleImageUpload(event: Event) {
 function processImageFile(file: File) {
   const reader = new FileReader()
   reader.onload = (e) => {
-    const data = e.target?.result as string
-    uploadedImages.value.push({
-      id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: file.name,
-      data
-    })
+    const base64 = e.target?.result as string
+    const id = `img-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+    uploadedImages.value.push({ id, name: file.name, data: base64 })
   }
   reader.readAsDataURL(file)
 }
@@ -389,9 +392,12 @@ function deleteImage(id: string) {
   uploadedImages.value = (uploadedImages.value || []).filter(img => img.id !== id)
 }
 
-function insertImage(img: { name: string, data: string }) {
-  const markdown = `\n![${img.name}](${img.data})\n`
-  generatedMarkdown.value = (generatedMarkdown.value || '') + markdown
+function insertImage(img: { id: string; name: string; data: string }) {
+  // Standard Markdown Reference Style: ![name][id] ... [id]: base64
+  const refLink = `![${img.name}][${img.id}]`
+  const refData = `\n\n[${img.id}]: ${img.data}`
+  
+  generatedMarkdown.value = (generatedMarkdown.value || '') + '\n' + refLink + refData
 }
 
 // Global scroll lock for Step 3 - Force absolute height and overflow hidden
@@ -685,24 +691,27 @@ onUnmounted(() => {
                   <h3 class="font-bold text-sm text-text dark:text-dark-text">Preferencias</h3>
                 </div>
 
-                <div class="flex-1 flex flex-col pt-6 overflow-y-auto pr-2 custom-scrollbar">
-                  <div class="space-y-8 pb-4">
-                    <!-- Nivel de Lenguaje Técnico -->
+                <div class="flex-1 flex flex-col pt-5 overflow-y-auto pr-2 custom-scrollbar">
+                  <div class="space-y-6 pb-4">
+
+                    <!-- Content Mode Select -->
                     <div>
-                      <label for="audience" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Lenguaje Técnico</label>
+                      <label for="content-mode" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Modo de Contenido</label>
                       <select
-                        id="audience"
-                        v-model="audience"
+                        id="content-mode"
+                        v-model="contentMode"
+                        @change="store.applyModePresets(contentMode)"
                         class="block w-full rounded-xl border-0 py-2.5 px-3 text-text dark:text-dark-text shadow-sm ring-1 ring-inset ring-secondary/10 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-background dark:bg-dark-background transition-all hover:bg-background/80 dark:hover:bg-dark-surface"
                       >
-                        <option value="General">General</option>
-                        <option value="Principiantes">Principiantes</option>
-                        <option value="Expertos">Profesionales</option>
-                        <option value="Estudiantes">Académico</option>
-                        <option value="Técnico">Perfil Técnico</option>
+                        <option :value="null">Personalizado / Ninguno</option>
+                        <option value="quick-guide">Guía Rápida (Breve, escaneable)</option>
+                        <option value="news-brief">Noticia Breve (Pirámide invertida)</option>
+                        <option value="deep-dive">Inmersivo (Completo, detallado)</option>
+                        <option value="storytelling">Crónica (Narrativo, editorial)</option>
                       </select>
                     </div>
 
+                    <div class="border-t border-secondary/10 dark:border-dark-border"></div>
                     <!-- Objetivo del artículo -->
                     <div>
                       <label for="intent" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Objetivo del artículo</label>
@@ -718,12 +727,28 @@ onUnmounted(() => {
                       </select>
                     </div>
 
+                    <!-- Nivel de Lenguaje Técnico (Slider) -->
+                    <div>
+                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
+                        Lenguaje Técnico: 
+                        <span class="text-primary ml-1">{{ getAudienceLabel(audienceValue) }}</span>
+                      </label>
+                      <div class="px-1">
+                        <input type="range" v-model.number="audienceValue" min="0" max="100" step="50" class="w-full h-1.5 bg-secondary/10 dark:bg-dark-border rounded-lg appearance-none cursor-pointer mb-2.5 focus:outline-none focus:ring-2 focus:ring-primary [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-primary" />
+                        <div class="flex justify-between text-[9px] uppercase font-bold text-secondary/30 dark:text-dark-text/20 tracking-tighter">
+                          <span>General</span>
+                          <span class="translate-x-1.5">Prof.</span>
+                          <span>Espec.</span>
+                        </div>
+                      </div>
+                    </div>
+
                     <!-- Tone Slider -->
                     <div>
                       <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
                         Tono: 
                         <span class="text-primary ml-1">
-                          {{ toneValue < 33 ? 'Profesional' : toneValue < 66 ? 'Cercano' : 'Viral/Audaz' }}
+                          {{ getToneLabel(toneValue) }}
                         </span>
                       </label>
                       <div class="px-1">
@@ -838,6 +863,28 @@ onUnmounted(() => {
                       <option value="medium">Normal (~250 palabras)</option>
                       <option value="long">Extenso (~500 palabras)</option>
                     </select>
+
+                    <!-- Infographic Checkbox -->
+                    <label 
+                      v-if="item.included"
+                      class="flex items-center gap-1.5 cursor-pointer group/info select-none shrink-0 px-2 py-1 rounded-lg hover:bg-primary/5 transition-colors"
+                      :title="item.infographic ? 'Infografía activada' : 'Añadir infografía'"
+                    >
+                      <input 
+                        type="checkbox" 
+                        v-model="item.infographic" 
+                        class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary/40 transition duration-150 cursor-pointer bg-transparent" 
+                      />
+                      <svg 
+                        class="h-4 w-4 transition-colors" 
+                        :class="item.infographic ? 'text-primary' : 'text-secondary/40 group-hover/info:text-primary/60'"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 0 1 2-2h.93a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 10.07 4h3.86a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 18.07 7H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z" />
+                        <circle cx="12" cy="13" r="3" stroke-width="2" />
+                      </svg>
+                      <span class="text-[10px] font-bold uppercase tracking-tighter" :class="item.infographic ? 'text-primary' : 'text-secondary/40 group-hover/info:text-primary/60'">Infografía</span>
+                    </label>
                   </div>
                   
                   <!-- Delete Action -->

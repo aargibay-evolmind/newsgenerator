@@ -19,6 +19,11 @@ const router = createRouter({
       component: () => import('@/features/auth/views/LoginView.vue'),
     },
     {
+      path: '/register',
+      name: 'Register',
+      component: () => import('@/features/auth/views/RegisterView.vue'),
+    },
+    {
       path: '/mis-noticias/:id',
       name: 'SavedArticleDetail',
       component: () => import('@/features/articles/views/SavedArticleDetailView.vue'),
