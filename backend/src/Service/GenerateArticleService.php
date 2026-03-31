@@ -27,6 +27,7 @@ class GenerateArticleService
         $searchIntent = $payload['searchIntent'] ?? 'Informativo';
         $additionalContext = $payload['additionalContext'] ?? '';
         $keyPoints = $payload['keyPoints'] ?? [];
+        $masterDLeads = $payload['masterDLeads'] ?? [];
         $contentMode = $payload['contentMode'] ?? null;
 
         $logFile = '/tmp/infographic_debug.log';
@@ -69,7 +70,12 @@ class GenerateArticleService
 
         $prompt .= "\n### II. ESTRUCTURA Y SEO AVANZADO (OBLIGATORIO):\n";
         $prompt .= sprintf("- **Respuesta Directa (AEO):** Bajo el H1 principal, redacta un resumen de máximo 50 palabras que responda la duda central del usuario (para capturar AI Overviews y Snippets).\n");
-        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de la 'Respuesta Directa' y antes de la primera sección del esquema, incluye la tabla de contenidos colapsable usando estrictamente: `<details open><summary>Tabla de contenidos</summary>\n\n- [Texto del enlace](#ancla-del-encabezado)\n- ...\n\n</details>`. Asegúrate de que los enlaces sean una **lista con viñetas** Markdown válida y que cada enlace apunte al ID correcto del encabezado. **No la repitas nunca en el cuerpo del texto ni crees un encabezado ## para ella.**\n";
+        
+        $leadsContent = !empty($masterDLeads) ? implode(', ', $masterDLeads) : "1-2 ganchos directos y persuasivos";
+
+        $prompt .= "- **Integración de Ganchos (IMPORTANTE):** NO incluyas los ganchos o leads dentro del cuerpo del artículo. Debes generarlos o integrarlos EXCLUSIVAMENTE en el bloque de metadatos al final. No uses negrita (`**`) ni ningún otro formato Markdown en los ganchos.\n";
+
+        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de los 'Leads' (si los hay) y antes de la primera sección del esquema, incluye la tabla de contenidos colapsable usando estrictamente: `<details open><summary>Tabla de contenidos</summary>\n\n- [Texto del enlace](#ancla-del-encabezado)\n- ...\n\n</details>`. Asegúrate de que los enlaces sean una **lista con viñetas** Markdown válida y que cada enlace apunte al ID correcto del encabezado. **No la repitas nunca en el cuerpo del texto ni crees un encabezado ## para ella.**\n";
         $prompt .= "- **Autoridad E-E-A-T:** Cita fuentes oficiales (Ministerios, SEPE, BOE, portales regionales). Usa terminología precisa: **nota de corte**, **itinerarios formativos**, **unidades de competencia**.\n";
         $prompt .= "- **Impacto y Empleabilidad:** Siempre que el tema lo permita, incluye datos de mercado laboral 2026 (sectores en auge, salarios medios previstos) para justificar el valor del curso o FP.\n";
         $prompt .= "- **Comparativa Multizona:** Emplea al menos una **tabla Markdown** para comparar plazos, plazas o requisitos entre diferentes CCAA o modalidades.\n";
@@ -80,7 +86,7 @@ class GenerateArticleService
         $prompt .= sprintf("- **Intención de Búsqueda:** %s\n", $searchIntent);
         
         if (!empty($keyPoints)) {
-            $prompt .= sprintf("- **Puntos Críticos a desarrollar:** %s\n", implode(', ', $keyPoints));
+            $prompt .= sprintf("- **Estructura Crítica a cubrir obligatoriamente:** %s\n", implode(', ', $keyPoints));
         }
 
         if (!empty($keywords)) {
@@ -134,6 +140,7 @@ class GenerateArticleService
         $prompt .= "Meta title: [Título con números o corchetes, ej: 'Curso X 2026 [Guía Oficial]']\n";
         $prompt .= "Meta-keywords: [5-10 términos clave]\n";
         $prompt .= "Meta description: [Resumen con beneficio inmediato y llamada a la acción]\n";
+        $prompt .= "Ganchos: " . $leadsContent . "\n";
         $prompt .= "Short text: [Gancho de 2 frases con promesa de empleabilidad]\n";
         $prompt .= "Email title: [Asunto magnético, ej: '¿Sabías que el sector X paga Y€?']\n";
         $prompt .= "Email text: [Texto breve resaltando un dato impactante e invitando a leer]\n";

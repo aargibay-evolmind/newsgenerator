@@ -22,6 +22,7 @@ export interface GenerateOutlineRequest {
   audience?: string;
   searchIntent?: string;
   additionalContext?: string;
+  masterDLeads?: string[];
 }
 
 export interface OutlineItem {
@@ -39,9 +40,16 @@ export interface ReferenceLink {
   included: boolean;
 }
 
+export interface LeadItem {
+  id: number;
+  text: string;
+  included: boolean;
+}
+
 export interface GenerateOutlineResponse {
   outline: OutlineItem[];
   suggestedLinks: ReferenceLink[];
+  masterDLeads?: string[];
 }
 
 export interface GenerateArticleRequest {
@@ -55,6 +63,7 @@ export interface GenerateArticleRequest {
   includeTables: boolean;
   outline: OutlineItem[];
   references: ReferenceLink[];
+  masterDLeads?: string[];
 }
 
 export interface GenerateArticleResponse {

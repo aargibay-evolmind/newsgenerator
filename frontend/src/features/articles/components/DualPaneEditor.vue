@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { renderMarkdown, cleanMarkdown, revokeMarkdownBlobs } from '@/utils/markdown'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
-import { renderMarkdown, cleanMarkdown } from '@/utils/markdown'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { useRegenerateSection } from '../composables'
 
@@ -21,6 +20,7 @@ const props = defineProps<{
     shortText: string;
     emailTitle: string;
     emailText: string;
+    leads: string;
   }
 }>()
 
@@ -93,7 +93,7 @@ function downloadArticle(format: 'markdown' | 'html') {
     .replace(/^-|-$/g, '')
   
   if (format === 'html') {
-    const htmlContent = marked.parse(content)
+    const htmlContent = renderMarkdown(content, true)
     content = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -135,7 +135,7 @@ function downloadArticle(format: 'markdown' | 'html') {
 const renderedHtml = computed(() => renderMarkdown(generatedMarkdown.value))
 
 function copyToClipboard() {
-  const content = renderedHtml.value
+  const content = renderMarkdown(generatedMarkdown.value, true)
   
   if (navigator.clipboard && window.isSecureContext) {
     navigator.clipboard.writeText(content).then(() => {
@@ -246,11 +246,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  revokeMarkdownBlobs()
   if (typeof window !== 'undefined') {
-    document.body.style.overflow = '';
-    document.body.style.height = '';
-    document.documentElement.style.overflow = '';
-    document.documentElement.style.height = '';
+    document.body.style.overflow = ''
+    document.body.style.height = ''
+    document.documentElement.style.overflow = ''
+    document.documentElement.style.height = ''
   }
 })
 </script>
@@ -419,6 +420,17 @@ onUnmounted(() => {
               <!-- Content & Email Section -->
               <div class="space-y-4">
                  <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Engagement & Newsletter</h4>
+0
+                 <!-- Leads / Ganchos (MasterD Hooks) -->
+                 <div class="flex flex-col gap-1.5 pt-2">
+                   <div class="flex items-center justify-between">
+                     <label class="text-[10px] font-bold text-primary dark:text-primary uppercase tracking-wider">Ganchos / Leads (MasterD)</label>
+                     <button @click="copyField(metadata.leads, 'leads')" class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1">
+                       {{ copiedField === 'leads' ? '¡Copiado!' : 'Copiar' }}
+                     </button>
+                   </div>
+                   <div class="px-3 py-2 bg-primary/5 dark:bg-primary/10 border border-primary/20 dark:border-primary/30 rounded-lg text-xs italic text-secondary dark:text-primary leading-relaxed transition-colors border-l-4 border-l-primary shadow-sm">{{ metadata.leads }}</div>
+                 </div>
 
                  <!-- Meta Description -->
                  <div class="flex flex-col gap-1.5">

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSavedArticle, useDeleteArticle } from '../composables';
 import MainHeader from '@/components/MainHeader.vue';
-import { renderMarkdown } from '@/utils/markdown';
+import { renderMarkdown, revokeMarkdownBlobs } from '@/utils/markdown';
 
 const route = useRoute();
 const router = useRouter();
@@ -13,6 +13,10 @@ const { data: article, isLoading, isError } = useSavedArticle(articleId);
 const { mutate: deleteArticle } = useDeleteArticle();
 
 const renderedHtml = computed(() => renderMarkdown(article.value?.data?.markdown));
+
+onUnmounted(() => {
+  revokeMarkdownBlobs();
+});
 
 function goBack() {
   router.push({ name: 'SavedArticles' });

@@ -13,7 +13,7 @@ import {
 import MainHeader from '@/components/MainHeader.vue';
 import DualPaneEditor from '../components/DualPaneEditor.vue'
 import GenerationStepper from '../components/GenerationStepper.vue'
-import { cleanMarkdown } from '@/utils/markdown'
+import { cleanMarkdown, reorganizeImageRefs } from '@/utils/markdown'
 
 // Store and API hooks
 const store = useArticleStore()
@@ -33,11 +33,13 @@ const {
   sectionCount,
   outlineList,
   suggestedLinks,
-  uploadedImages
+  uploadedImages,
+  masterDLeads
 } = storeToRefs(store)
 const { 
     getAudienceLabel,
-    getToneLabel
+    getToneLabel,
+    applyIntentPrompt
   } = store
 const { mutateAsync: suggestTopics, isPending: suggestTopicsLoading } = useSuggestTopics()
 const { mutateAsync: scrapeUrl, isPending: isScraping } = useUrlScraping()
@@ -48,12 +50,26 @@ const { mutate: syncKB } = useSyncKnowledgeBase()
 
 onMounted(() => {
   syncKB()
+  // Apply initial intent prompt if context is empty
+  if (!additionalContext.value.trim()) {
+    applyIntentPrompt(searchIntent.value);
+  }
+})
+
+watch(searchIntent, (newIntent) => {
+  applyIntentPrompt(newIntent);
 })
 
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const currentStep = ref(1)
 const suggestedTopics = ref<string[]>([])
+const intentDescriptions: Record<string, string> = {
+  'Informativo': 'Explica hechos, datos y conceptos generales.',
+  'Tutorial': 'Guía paso a paso para realizar una tarea o trámite.',
+  'Transaccional': 'Enfocado en la conversión y atraer alumnos.',
+  'Comparativo': 'Analiza diferencias entre varias opciones.'
+}
 
 interface ArticleMetadata {
   friendlyUrl: string;
@@ -63,6 +79,7 @@ interface ArticleMetadata {
   shortText: string;
   emailTitle: string;
   emailText: string;
+  leads: string;
 }
 
 const articleMetadata = ref<ArticleMetadata>({
@@ -72,7 +89,8 @@ const articleMetadata = ref<ArticleMetadata>({
   metaDescription: '',
   shortText: '',
   emailTitle: '',
-  emailText: ''
+  emailText: '',
+  leads: ''
 })
 
 function parseMetadataBlock(text: string) {
@@ -86,7 +104,8 @@ function parseMetadataBlock(text: string) {
     'Meta description': 'metaDescription',
     'Short text': 'shortText',
     'Email title': 'emailTitle',
-    'Email text': 'emailText'
+    'Email text': 'emailText',
+    'Ganchos': 'leads'
   };
 
   lines.forEach(line => {
@@ -218,6 +237,7 @@ function addLink() {
 // Step 2 Tags functionality
 const newTag = ref('')
 const newKeyPoint = ref('')
+const newMasterDLead = ref('')
 
 function addTag() {
   if (newTag.value.trim() && !tags.value.includes(newTag.value.trim())) {
@@ -241,6 +261,21 @@ function removeKeyPoint(point: string) {
   keyPoints.value = keyPoints.value.filter((p: any) => p !== point)
 }
 
+function addMasterDLead() {
+  if (newMasterDLead.value.trim() && !masterDLeads.value.find(l => l.text === newMasterDLead.value.trim())) {
+    masterDLeads.value.push({
+      id: Date.now(),
+      text: newMasterDLead.value.trim(),
+      included: true
+    })
+    newMasterDLead.value = ''
+  }
+}
+
+function removeMasterDLead(leadId: number) {
+  masterDLeads.value = masterDLeads.value.filter((l: any) => l.id !== leadId)
+}
+
 async function saveArticleToDb() {
   if (isSavingArticle.value) return;
   
@@ -249,6 +284,7 @@ async function saveArticleToDb() {
   const readingTime = Math.max(1, Math.ceil(words / 200));
 
   try {
+    generatedMarkdown.value = reorganizeImageRefs(generatedMarkdown.value);
     await saveArticleMutation({
       title: blogTitle.value.trim() || 'Artículo Sin Título',
       data: {
@@ -302,6 +338,13 @@ async function handleProceedToArchitect() {
     }));
     
     suggestedLinks.value = [...userLinks, ...aiLinks];
+    if (response.masterDLeads && response.masterDLeads.length > 0) {
+      masterDLeads.value = response.masterDLeads.map((text: string, idx: number) => ({
+        id: 7000 + idx, // Use high IDs for AI leads
+        text,
+        included: true
+      }));
+    }
     goNext(2);
   } catch (error: any) {
     console.error("Failed to generate outline", error)
@@ -327,10 +370,10 @@ async function handleGenerateArticle() {
     // Split metadata from markdown
     const parts = response.markdown.split('---METADATA---');
     if (parts.length >= 2 && parts[0] !== undefined && parts[1] !== undefined) {
-      generatedMarkdown.value = cleanMarkdown(parts[0]);
+      generatedMarkdown.value = reorganizeImageRefs(cleanMarkdown(parts[0]));
       articleMetadata.value = parseMetadataBlock(parts[1]);
     } else {
-      generatedMarkdown.value = cleanMarkdown(response.markdown);
+      generatedMarkdown.value = reorganizeImageRefs(cleanMarkdown(response.markdown));
       // Reset metadata if not found
       articleMetadata.value = {
         friendlyUrl: '',
@@ -339,7 +382,8 @@ async function handleGenerateArticle() {
         metaDescription: '',
         shortText: '',
         emailTitle: '',
-        emailText: ''
+        emailText: '',
+        leads: ''
       };
     }
     
@@ -553,11 +597,11 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Leads -->
+                <!-- Structural Points -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label for="puntos-clave" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Leads (Puntos clave)</label>
-                    <p class="text-xs text-secondary dark:text-dark-text/30">Define los ejes principales que la noticia debe cubrir para asegurar que el contenido sea relevante y completo.</p>
+                    <label for="puntos-clave" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Estructura / Puntos Críticos</label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Temas técnicos o requisitos legales que **deben** aparecer obligatoriamente en el cuerpo del artículo.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -572,7 +616,7 @@ onUnmounted(() => {
                       Añadir
                     </button>
                   </div>
-                  <!-- Leads List Inline -->
+                  <!-- Points List -->
                   <div class="flex flex-wrap gap-2" v-if="keyPoints.length > 0">
                     <span v-for="(point, index) in keyPoints" :key="index" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30">
                       {{ point }}
@@ -580,6 +624,37 @@ onUnmounted(() => {
                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     </span>
+                  </div>
+                </div>
+
+                <!-- Ganchos / Leads (MasterD Hooks) -->
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
+                  <div class="mb-4">
+                    <label for="ganchos" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1 font-mono">Ganchos / Leads (Opcional)</label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30 italic">Frases persuasivas para abrir la noticia y atraer al lector (Estilo MasterD).</p>
+                  </div>
+                  <div class="flex gap-2 mb-4">
+                    <input 
+                      id="ganchos"
+                      v-model="newMasterDLead" 
+                      @keydown.enter.prevent="addMasterDLead"
+                      type="text" 
+                      class="block w-full rounded-xl border-0 py-3 px-4 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm transition-all"
+                      placeholder="Ej. ¿Te gustaría trabajar en...? (Presiona Enter)" 
+                    />
+                    <button @click="addMasterDLead" class="px-4 py-2 bg-secondary/10 dark:bg-dark-surface hover:bg-secondary/20 dark:hover:bg-dark-background text-text dark:text-dark-text font-semibold rounded-xl text-sm transition-colors border border-secondary/20 dark:border-dark-border shadow-sm shrink-0">
+                      Añadir
+                    </button>
+                  </div>
+                  <!-- Leads List -->
+                  <div class="flex flex-wrap gap-2" v-if="masterDLeads && masterDLeads.length > 0">
+                    <div v-for="lead in masterDLeads" :key="lead.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-normal transition-all" :class="lead.included ? 'bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30' : 'bg-secondary/5 dark:bg-dark-surface text-secondary/40 border border-secondary/10 dark:border-dark-border'">
+                      <input type="checkbox" v-model="lead.included" class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary/40 cursor-pointer bg-transparent" />
+                      <span :class="{ 'line-through opacity-50': !lead.included }">{{ lead.text }}</span>
+                      <button @click="removeMasterDLead(lead.id)" class="hover:text-red-500 focus:outline-none rounded-full p-0.5 ml-1 transition-colors" title="Eliminar gancho">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -696,7 +771,7 @@ onUnmounted(() => {
 
                     <!-- Content Mode Select -->
                     <div>
-                      <label for="content-mode" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Modo de Contenido</label>
+                      <label for="content-mode" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Configuración Rápida</label>
                       <select
                         id="content-mode"
                         v-model="contentMode"
@@ -714,7 +789,7 @@ onUnmounted(() => {
                     <div class="border-t border-secondary/10 dark:border-dark-border"></div>
                     <!-- Objetivo del artículo -->
                     <div>
-                      <label for="intent" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Objetivo del artículo</label>
+                      <label for="intent" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Modo de Contenido</label>
                       <select
                         id="intent"
                         v-model="searchIntent"
@@ -725,6 +800,9 @@ onUnmounted(() => {
                         <option value="Transaccional">Transaccional</option>
                         <option value="Comparativo">Comparativo</option>
                       </select>
+                      <p v-if="searchIntent && intentDescriptions[searchIntent]" class="mt-2 text-[10px] text-secondary/60 dark:text-dark-text/30 italic animate-in fade-in slide-in-from-top-1 duration-200">
+                        {{ intentDescriptions[searchIntent] }}
+                      </p>
                     </div>
 
                     <!-- Nivel de Lenguaje Técnico (Slider) -->
@@ -917,6 +995,41 @@ onUnmounted(() => {
               </div>
           </div>
 
+          <!-- Leads / Ganchos Card (Step 2) -->
+          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Ganchos / Leads de Apertura
+                </h2>
+                <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Revisa o añade ganchos persuasivos para la introducción del artículo.</p>
+                
+                <div class="flex gap-2 mb-4">
+                  <input 
+                    v-model="newMasterDLead" 
+                    @keydown.enter.prevent="addMasterDLead"
+                    type="text" 
+                    class="block w-full rounded-xl border-0 py-2.5 px-4 text-sm text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary transition-all"
+                    placeholder="Nuevo gancho... (Enter)" 
+                  />
+                  <button @click="addMasterDLead" class="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary font-bold rounded-xl text-xs transition-colors border border-primary/10 shadow-sm shrink-0 uppercase tracking-wider">
+                    Añadir
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap gap-2" v-if="masterDLeads && masterDLeads.length > 0">
+                  <div v-for="lead in masterDLeads" :key="lead.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-normal transition-all" :class="lead.included ? 'bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30 shadow-sm' : 'bg-secondary/5 dark:bg-dark-surface text-secondary/40 border border-secondary/10 dark:border-dark-border'">
+                    <input type="checkbox" v-model="lead.included" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary/40 cursor-pointer bg-transparent" />
+                    <span :class="{ 'line-through opacity-50': !lead.included }">{{ lead.text }}</span>
+                    <button @click="removeMasterDLead(lead.id)" class="hover:text-red-500 focus:outline-none rounded-full p-0.5 ml-1 transition-colors" title="Eliminar gancho">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="text-center py-4 border-2 border-dashed border-secondary/10 dark:border-dark-border rounded-xl">
+                  <p class="text-xs text-secondary/40 italic">No hay ganchos manuales. La IA los generará automáticamente.</p>
+                </div>
+          </div>
+
           <!-- Suggested Links Card -->
           <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
                 <h2 class="text-lg font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
@@ -1061,4 +1174,5 @@ onUnmounted(() => {
 :deep(.prose th), :deep(.prose td) {
   @apply border border-secondary/10 dark:border-dark-border px-4 py-2 min-w-[120px] dark:text-dark-text/80;
 }
+
 </style>

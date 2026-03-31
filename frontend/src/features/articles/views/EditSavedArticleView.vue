@@ -1,9 +1,10 @@
 <script lang="ts" setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSavedArticle, useUpdateArticle } from '../composables'
 import DualPaneEditor from '../components/DualPaneEditor.vue'
 import MainHeader from '@/components/MainHeader.vue'
+import { revokeMarkdownBlobs, reorganizeImageRefs } from '@/utils/markdown'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,7 +26,7 @@ const articleMetadata = ref({
 
 watch(article, (newArticle) => {
   if (newArticle?.data?.markdown) {
-    generatedMarkdown.value = newArticle.data.markdown
+    generatedMarkdown.value = reorganizeImageRefs(newArticle.data.markdown)
   }
   if (newArticle?.data?.metadata) {
     articleMetadata.value = { ...newArticle.data.metadata }
@@ -38,6 +39,7 @@ const errorMessage = ref<string | null>(null)
 async function handleSave() {
   if (isUpdating.value || !article.value) return;
   try {
+    generatedMarkdown.value = reorganizeImageRefs(generatedMarkdown.value);
     await updateArticleMutation({
       id: articleId,
       data: {
@@ -60,6 +62,10 @@ async function handleSave() {
 function handleBack() {
   router.push({ name: 'SavedArticleDetail', params: { id: articleId } });
 }
+
+onUnmounted(() => {
+  revokeMarkdownBlobs();
+})
 </script>
 
 <template>

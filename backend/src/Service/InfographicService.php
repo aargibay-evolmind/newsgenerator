@@ -22,7 +22,8 @@ class InfographicService
         $dataPrompt = sprintf(
             "Extrae y formatea los 3 a 5 puntos clave (datos, cifras o conceptos) más importantes sobre: '%s'. " .
             "Contexto del artículo: '%s'. " .
-            "Devuelve ÚNICAMENTE los puntos clave en una lista corta, sin introducciones ni explicaciones adicionales.",
+            "IMPORTANTE: Devuelve la respuesta ÚNICAMENTE como una lista de Markdown (usando guiones o números). " .
+            "No incluyas etiquetas HTML, ni bloques de código, ni introducciones.",
             $sectionText,
             $articleTitle
         );

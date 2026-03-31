@@ -17,9 +17,10 @@ class GenerateOutlineService
      * @param string $audience
      * @param string $searchIntent
      * @param string $additionalContext
+     * @param array<string> $masterDLeads
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7, ?string $contentMode = null): array
+    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7, ?string $contentMode = null, array $masterDLeads = []): array
     {
         // LOAD RELEVANT COURSES FOR CONTEXTUAL OUTLINE
         $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
@@ -59,7 +60,11 @@ class GenerateOutlineService
         }
         
         if (!empty($keyPoints)) {
-            $prompt .= sprintf("Debes integrar obligatoriamente estos Puntos Críticos en el índice: %s.\n", implode(', ', $keyPoints));
+            $prompt .= sprintf("**Puntos de Estructura / Temas Críticos:** %s. Integra estos temas de forma natural en el índice como encabezados o sub-apartados.\n", implode(', ', $keyPoints));
+        }
+
+        if (!empty($masterDLeads)) {
+            $prompt .= sprintf("**Ganchos/Leads de Apertura (Referencia):** %s. No incluyas encabezados para estos ganchos, se usarán solo para la introducción del artículo.\n", implode(', ', $masterDLeads));
         }
 
         $prompt .= "
@@ -69,6 +74,11 @@ Requisitos del Esquema:
 3. El esquema debe priorizar la empleabilidad en España 2026 (sueldos, demanda real, requisitos oficiales).
 4. **Obligatorio:** Incluye una sección final titulada 'Pasos para empezar tu formación' o similar, diseñada para cerrar con autoridad e invitar a la acción.
 5. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, BOE o portales oficiales) relevantes para el tema.
+6. **Ganchos/Leads de Apertura:** Revisa los ganchos proporcionados por el usuario (si los hay) y opta por uno de estos enfoques:
+   - Si el usuario NO proporcionó ganchos: Genera 3-5 frases persuasivas y directas al estilo MasterD.
+   - Si el usuario SÍ proporcionó ganchos: Refínalos para que sean más impactantes o sugiere alternativas adicionales que sigan mejor el estilo MasterD, devolviendo siempre una lista final de 3-5 ganchos optimizados.
+   - **IMPORTANTE:** No uses negrita (`**`) ni ningún otro formato Markdown en los ganchos.
+   - No incluyas llamadas a la acción genéricas.
 
 **IMPORTANTE: Cursos Disponibles en la Academia:**
 Considera incluir secciones que faciliten la integración natural de estos cursos específicos en el artículo:
@@ -101,9 +111,14 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                         ]
                     ],
                     'description' => 'Lista de enlaces de referencia sugeridos.'
+                ],
+                'masterDLeads' => [
+                    'type' => 'ARRAY',
+                    'items' => ['type' => 'STRING'],
+                    'description' => 'Lista de 1-2 ganchos persuasivos para la introducción.'
                 ]
             ],
-            'required' => ['outline', 'suggestedLinks']
+            'required' => ['outline', 'suggestedLinks', 'masterDLeads']
         ];
 
         $models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
@@ -117,7 +132,8 @@ Considera incluir secciones que faciliten la integración natural de estos curso
             // Format to the UI expected DTO
             $responseData = [
                 'outline' => [],
-                'suggestedLinks' => []
+                'suggestedLinks' => [],
+                'masterDLeads' => []
             ];
 
             if (isset($data['outline']) && is_array($data['outline'])) {
@@ -142,6 +158,10 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                         'included' => true
                     ];
                 }
+            }
+
+            if (isset($data['masterDLeads']) && is_array($data['masterDLeads'])) {
+                $responseData['masterDLeads'] = $data['masterDLeads'];
             }
 
             // APPEND RELEVANT COURSES FROM ACADEMY
