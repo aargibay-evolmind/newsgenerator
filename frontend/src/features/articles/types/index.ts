@@ -15,6 +15,17 @@ export interface ScrapeUrlResponse {
   url: string;
 }
 
+export interface ArticleMetadata {
+  friendlyUrl: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  shortText: string;
+  emailTitle: string;
+  emailText: string;
+  leads?: string;
+}
+
 export interface GenerateOutlineRequest {
   title: string;
   keywords: string[];

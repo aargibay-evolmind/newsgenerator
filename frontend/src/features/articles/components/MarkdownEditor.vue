@@ -90,9 +90,9 @@ const InnerEditor = defineComponent({
 
 :deep(.milkdown .ProseMirror) {
   @apply leading-relaxed text-slate-800 dark:text-dark-text outline-none;
-  padding: 3rem 1.5rem !important; /* Slightly less padding to gain space */
+  padding: 3rem 2rem !important;
   min-height: 100%;
-  max-width: 680px !important; /* Further reduced to ensure it fits comfortably */
+  max-width: 1024px !important; /* Increased to 5xl equivalent to take more space */
   margin: 0 auto !important;
   font-size: 16px;
 }

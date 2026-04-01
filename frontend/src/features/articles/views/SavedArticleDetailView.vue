@@ -79,18 +79,14 @@ function handleDelete() {
           </div>
         </div>
 
-        <!-- Article Header -->
         <header class="mb-12">
-          <div class="flex items-center gap-3 mb-4">
+          <div class="flex items-center gap-3 mb-6">
             <span v-if="article.data?.readingTime" class="px-2.5 py-1 bg-primary/5 text-[10px] font-black text-primary rounded-full uppercase tracking-wider flex items-center gap-1">
               <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               {{ article.data.readingTime }} min lectura
             </span>
             <span class="text-[10px] font-bold text-secondary tracking-widest uppercase">{{ new Date(article.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) }}</span>
           </div>
-          <h1 class="text-4xl sm:text-5xl font-black tracking-tight text-text leading-[1.1] mb-6">
-            {{ article.title }}
-          </h1>
           <div v-if="article.data?.keywords?.length" class="flex flex-wrap gap-2">
             <span v-for="tag in article.data.keywords" :key="tag" class="text-[10px] font-bold text-secondary/50 bg-secondary/5 px-2.5 py-1 rounded-lg">#{{ tag.toLowerCase().replace(/\s+/g, '') }}</span>
           </div>

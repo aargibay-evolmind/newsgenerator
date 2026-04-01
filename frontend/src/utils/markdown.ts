@@ -104,9 +104,54 @@ export function renderMarkdown(markdown: string | undefined | null, portable: bo
     }
   });
 
-  // 4c. Ensure details are open if needed (though DOMPurify should preserve them)
-  const details = cleanDom.querySelectorAll('details');
-  details.forEach(d => {
+  // 4c. Generate IDs for all headers to make the TOC work
+  const headers = cleanDom.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headers.forEach(header => {
+    if (!header.id) {
+      const text = header.textContent || '';
+      const slug = text.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      header.id = slug;
+    }
+  });
+
+  // 4d. Post-process the "ÍNDICE DE CONTENIDOS" into a collapsible block
+  const allElements = Array.from(cleanDom.querySelectorAll('*'));
+  const tocHeader = allElements.find(el => 
+    (el.tagName === 'H2' || el.tagName === 'H3') && 
+    (el.textContent?.toUpperCase().includes('ÍNDICE DE CONTENIDOS') || el.textContent?.toUpperCase().includes('TABLA DE CONTENIDOS'))
+  );
+
+  if (tocHeader) {
+    const details = document.createElement('details');
+    details.setAttribute('open', '');
+    details.className = 'toc-collapsible';
+    
+    const summary = document.createElement('summary');
+    summary.textContent = tocHeader.textContent || 'Índice de contenidos';
+    details.appendChild(summary);
+
+    // Collect next elements until another header is found
+    let next = tocHeader.nextElementSibling;
+    const toRemove = [tocHeader];
+    
+    while (next && !['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(next.tagName)) {
+      const current = next;
+      next = next.nextElementSibling;
+      details.appendChild(current.cloneNode(true));
+      toRemove.push(current);
+    }
+
+    tocHeader.parentNode?.insertBefore(details, tocHeader);
+    toRemove.forEach(el => el.remove());
+  }
+
+  // 4e. Ensure other details are open if needed
+  const existingDetails = cleanDom.querySelectorAll('details:not(.toc-collapsible)');
+  existingDetails.forEach(d => {
     if (!d.hasAttribute('open')) d.setAttribute('open', '');
   });
 

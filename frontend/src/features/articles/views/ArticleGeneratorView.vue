@@ -71,16 +71,7 @@ const intentDescriptions: Record<string, string> = {
   'Comparativo': 'Analiza diferencias entre varias opciones.'
 }
 
-interface ArticleMetadata {
-  friendlyUrl: string;
-  metaTitle: string;
-  metaKeywords: string;
-  metaDescription: string;
-  shortText: string;
-  emailTitle: string;
-  emailText: string;
-  leads: string;
-}
+import type { ArticleMetadata, OutlineItem, ReferenceLink, LeadItem } from '../types'
 
 const articleMetadata = ref<ArticleMetadata>({
   friendlyUrl: '',
@@ -95,7 +86,16 @@ const articleMetadata = ref<ArticleMetadata>({
 
 function parseMetadataBlock(text: string) {
   const lines = text.split('\n');
-  const metadata: any = {};
+  const metadata: any = {
+    friendlyUrl: '',
+    metaTitle: '',
+    metaKeywords: '',
+    metaDescription: '',
+    shortText: '',
+    emailTitle: '',
+    emailText: '',
+    leads: ''
+  };
   
   const mapping: Record<string, keyof ArticleMetadata> = {
     'Friendly URL': 'friendlyUrl',
@@ -108,14 +108,34 @@ function parseMetadataBlock(text: string) {
     'Ganchos': 'leads'
   };
 
+  let currentKey: keyof ArticleMetadata | null = null;
+
   lines.forEach(line => {
-    const [key, ...valueParts] = line.split(':');
-    if (key && valueParts.length > 0) {
-      const trimmedKey = key.trim();
-      const value = valueParts.join(':').trim();
-      if (mapping[trimmedKey]) {
-        metadata[mapping[trimmedKey]] = value;
+    const trimmedLine = line.trim();
+    if (!trimmedLine && !currentKey) return;
+
+    let foundKey = false;
+    // Check if line looks like "Key: Value" and Key is in mapping
+    const colonIndex = line.indexOf(':');
+    if (colonIndex !== -1) {
+      const potentialKeyName = line.substring(0, colonIndex).trim();
+      if (mapping[potentialKeyName]) {
+        currentKey = mapping[potentialKeyName];
+        metadata[currentKey] = line.substring(colonIndex + 1).trim();
+        foundKey = true;
       }
+    }
+
+    if (!foundKey && currentKey) {
+      // Append the original line content to preserve separation (trimmed at the end of loop)
+      metadata[currentKey] += '\n' + line.trim();
+    }
+  });
+
+  // Final trim for each metadata value
+  Object.keys(metadata).forEach(key => {
+    if (typeof metadata[key] === 'string') {
+      metadata[key] = metadata[key].trim();
     }
   });
 
@@ -274,6 +294,18 @@ function addMasterDLead() {
 
 function removeMasterDLead(leadId: number) {
   masterDLeads.value = masterDLeads.value.filter((l: any) => l.id !== leadId)
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    successMessage.value = "✅ Copiado al portapapeles";
+    setTimeout(() => { successMessage.value = null }, 3000);
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    errorMessage.value = "❌ Error al copiar al portapapeles";
+    setTimeout(() => { errorMessage.value = null }, 3000);
+  }
 }
 
 async function saveArticleToDb() {
@@ -629,9 +661,9 @@ onUnmounted(() => {
 
                 <!-- Ganchos / Leads (MasterD Hooks) -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
-                  <div class="mb-4">
-                    <label for="ganchos" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1 font-mono">Ganchos / Leads (Opcional)</label>
-                    <p class="text-xs text-secondary dark:text-dark-text/30 italic">Frases persuasivas para abrir la noticia y atraer al lector (Estilo MasterD).</p>
+                  <div class="mb-3">
+                    <label for="ganchos" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Ganchos / Leads <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Frases persuasivas para abrir la noticia y atraer al lector (Estilo MasterD).</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -648,7 +680,7 @@ onUnmounted(() => {
                   </div>
                   <!-- Leads List -->
                   <div class="flex flex-wrap gap-2" v-if="masterDLeads && masterDLeads.length > 0">
-                    <div v-for="lead in masterDLeads" :key="lead.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-normal transition-all" :class="lead.included ? 'bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30' : 'bg-secondary/5 dark:bg-dark-surface text-secondary/40 border border-secondary/10 dark:border-dark-border'">
+                    <div v-for="lead in masterDLeads" :key="lead.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all" :class="lead.included ? 'bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30' : 'bg-secondary/5 dark:bg-dark-surface text-secondary/40 border border-secondary/10 dark:border-dark-border'">
                       <input type="checkbox" v-model="lead.included" class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary/40 cursor-pointer bg-transparent" />
                       <span :class="{ 'line-through opacity-50': !lead.included }">{{ lead.text }}</span>
                       <button @click="removeMasterDLead(lead.id)" class="hover:text-red-500 focus:outline-none rounded-full p-0.5 ml-1 transition-colors" title="Eliminar gancho">
@@ -884,12 +916,14 @@ onUnmounted(() => {
             </aside>
           </div>
         </div>
-        <!-- STEP 2: THE ARCHITECT -->
-        <div v-else-if="currentStep === 2" class="flex flex-col gap-6" key="step2">
 
-          <!-- Outline Card -->
-          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
-          <div class="flex items-center justify-between mb-1">
+        <!-- STEP 2: THE ARCHITECT -->
+        <div v-else-if="currentStep === 2" class="flex flex-col gap-8 pb-10 max-w-4xl mx-auto w-full" key="step2">
+          <!-- MAIN AREA: OUTLINE -->
+          <div class="space-y-6">
+            <!-- Outline Card -->
+            <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
+              <div class="flex items-center justify-between mb-1">
                 <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
                   <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
                   Esquema Interactivo
@@ -967,7 +1001,7 @@ onUnmounted(() => {
                   
                   <!-- Delete Action -->
                   <button @click="removeHeading(item.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 dark:text-dark-text/20 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
-                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
                   </button>
                 </li>
               </ul>
@@ -978,7 +1012,6 @@ onUnmounted(() => {
                     <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
                     Encabezado
                   </button>
-
                 </div>
 
                 <!-- Elementos Adicionales inline -->
@@ -993,92 +1026,86 @@ onUnmounted(() => {
                   </label>
                 </div>
               </div>
+            </div>
           </div>
 
-          <!-- Leads / Ganchos Card (Step 2) -->
-          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
-                <h2 class="text-lg font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
-                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  Ganchos / Leads de Apertura
-                </h2>
-                <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Revisa o añade ganchos persuasivos para la introducción del artículo.</p>
-                
-                <div class="flex gap-2 mb-4">
-                  <input 
-                    v-model="newMasterDLead" 
-                    @keydown.enter.prevent="addMasterDLead"
-                    type="text" 
-                    class="block w-full rounded-xl border-0 py-2.5 px-4 text-sm text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary transition-all"
-                    placeholder="Nuevo gancho... (Enter)" 
-                  />
-                  <button @click="addMasterDLead" class="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary font-bold rounded-xl text-xs transition-colors border border-primary/10 shadow-sm shrink-0 uppercase tracking-wider">
-                    Añadir
-                  </button>
+          <!-- LEADS & LINKS (Sequential now) -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Leads / Ganchos Card -->
+            <div class="w-full bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
+              <h2 class="text-sm font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-3 mb-6 flex items-center gap-2">
+                <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                Ganchos / Leads
+              </h2>
+              
+              <div class="flex gap-2 mb-6">
+                <div class="relative flex-1 group ring-1 ring-inset ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden shadow-sm bg-background dark:bg-dark-background transition-all">
+                  <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <svg class="h-4 w-4 text-secondary/40 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  </div>
+                  <input v-model="newMasterDLead" @keydown.enter="addMasterDLead" type="text" placeholder="Escribe un gancho manual..." class="block w-full border-0 py-2.5 pl-10 pr-3 bg-transparent text-text dark:text-dark-text placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:ring-0 sm:text-xs transition-colors" />
                 </div>
+                <button @click="addMasterDLead" class="inline-flex items-center justify-center shrink-0 w-10 mt-1 h-8 font-semibold text-primary hover:text-primary transition-colors bg-primary/10 hover:bg-primary/20 rounded-lg border border-primary/10" title="Añadir gancho">
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                </button>
+              </div>
 
-                <div class="flex flex-wrap gap-2" v-if="masterDLeads && masterDLeads.length > 0">
-                  <div v-for="lead in masterDLeads" :key="lead.id" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-normal transition-all" :class="lead.included ? 'bg-primary/10 dark:bg-primary/20 text-primary border border-primary/20 dark:border-primary/30 shadow-sm' : 'bg-secondary/5 dark:bg-dark-surface text-secondary/40 border border-secondary/10 dark:border-dark-border'">
-                    <input type="checkbox" v-model="lead.included" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary/40 cursor-pointer bg-transparent" />
-                    <span :class="{ 'line-through opacity-50': !lead.included }">{{ lead.text }}</span>
-                    <button @click="removeMasterDLead(lead.id)" class="hover:text-red-500 focus:outline-none rounded-full p-0.5 ml-1 transition-colors" title="Eliminar gancho">
-                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+              <div class="space-y-3 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar" v-if="masterDLeads && masterDLeads.length > 0">
+                <div v-for="lead in masterDLeads" :key="lead.id" class="group flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-[11px] font-medium transition-all border" :class="lead.included ? 'bg-background dark:bg-dark-background text-text dark:text-dark-text border-primary/20 dark:border-primary/30 shadow-sm' : 'bg-transparent text-secondary/40 border-secondary/10 dark:border-dark-border'">
+                  <div class="flex items-center shrink-0 mt-0.5">
+                    <input type="checkbox" v-model="lead.included" class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary bg-transparent transition duration-150 cursor-pointer" />
+                  </div>
+                  <div class="flex-1 flex flex-col gap-1.5">
+                    <textarea v-model="lead.text" rows="2" class="w-full border-0 bg-transparent p-0 text-[11px] text-inherit focus:ring-0 resize-none min-h-[40px] font-medium" :class="!lead.included && 'opacity-50'"></textarea>
+                    <div class="flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button @click="copyText(lead.text)" class="text-[9px] text-primary/60 hover:text-primary font-bold flex items-center gap-1">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                        COPIAR
+                      </button>
+                      <button @click="removeMasterDLead(lead.id)" class="text-secondary/30 hover:text-red-500 transition-colors">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div v-else class="text-center py-4 border-2 border-dashed border-secondary/10 dark:border-dark-border rounded-xl">
-                  <p class="text-xs text-secondary/40 italic">No hay ganchos manuales. La IA los generará automáticamente.</p>
-                </div>
-          </div>
-
-          <!-- Suggested Links Card -->
-          <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5">
-                <h2 class="text-lg font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
-                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                  Enlaces Sugeridos
-                </h2>
-                <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">La IA sugiere incluir estos enlaces relevantes como referencia en el artículo.</p>
-                
-                <ul class="space-y-3 pr-2">
-                  <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-3 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 hover:border-secondary/30 dark:hover:border-primary/30 hover:bg-secondary/5 dark:hover:bg-primary/5 transition-all">
-                    
-                    <!-- Checkbox -->
-                    <div class="flex items-center shrink-0 mt-0.5">
-                      <input type="checkbox" v-model="link.included" class="h-4 w-4 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-secondary/40 dark:focus:ring-primary transition duration-150 cursor-pointer bg-transparent" />
-                    </div>
-
-                    <!-- Link Info -->
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2 mb-1">
-                        <input 
-                          type="text" 
-                          v-model="link.title" 
-                          class="text-sm font-semibold text-text dark:text-dark-text w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all" 
-                        />
-                      </div>
-                      <input 
-                        type="text" 
-                        v-model="link.url" 
-                        class="text-xs text-secondary dark:text-dark-text/40 w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-0.5 transition-all truncate" 
-                      />
-                    </div>
-                    
-                    <!-- Delete Action -->
-                    <button @click="removeLink(link.id)" class="opacity-0 group-hover:opacity-100 text-secondary/40 hover:text-red-500 transition-opacity p-1.5 rounded hover:bg-red-50 shrink-0">
-                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-                    </button>
-                  </li>
-                </ul>
-
-                <div class="mt-4 flex justify-start pt-4 border-t border-secondary/10 dark:border-dark-border gap-2 items-center">
-                   <div class="flex-1 grid grid-cols-2 gap-2">
-                      <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all">
-                      <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all">
-                   </div>
-                   <button @click="addLink" class="inline-flex items-center justify-center shrink-0 w-8 h-8 font-semibold text-primary hover:text-primary transition-colors bg-primary/10 hover:bg-primary/20 rounded-lg border border-primary/10" title="Añadir enlace">
-                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                   </button>
-                </div>
               </div>
+              <div v-else class="text-center py-6 border-2 border-dashed border-secondary/10 dark:border-dark-border rounded-xl">
+                <p class="text-[10px] text-secondary/40 italic">No hay ganchos manuales.</p>
+              </div>
+            </div>
+
+            <!-- Suggested Links Card -->
+            <div class="w-full bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
+              <h2 class="text-sm font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-3 mb-6 flex items-center gap-2">
+                <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                Enlaces
+              </h2>
+              
+              <ul class="space-y-4 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+                <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-2.5 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 hover:border-primary/20 dark:hover:border-primary/30 transition-all">
+                  <div class="flex items-center shrink-0 mt-0.5">
+                    <input type="checkbox" v-model="link.included" class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary transition duration-150 cursor-pointer bg-transparent" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <input type="text" v-model="link.title" class="text-[11px] font-bold text-text dark:text-dark-text w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-0 py-0 mb-0.5 transition-all" />
+                    <input type="text" v-model="link.url" class="text-[9px] text-secondary/50 dark:text-dark-text/30 w-full border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-0 py-0 transition-all truncate" />
+                  </div>
+                  <button @click="removeLink(link.id)" class="opacity-0 group-hover:opacity-100 text-secondary/30 hover:text-red-500 transition-opacity shrink-0">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
+                  </button>
+                </li>
+              </ul>
+              <div class="flex gap-2 mt-4">
+                <div class="flex-1 space-y-2">
+                  <input v-model="newLinkTitle" @keydown.enter="addLink" type="text" placeholder="Título del enlace..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all" />
+                  <input v-model="newLinkUrl" @keydown.enter="addLink" type="text" placeholder="https://..." class="block w-full rounded-lg border-0 py-2 px-3 text-text dark:text-dark-text bg-background dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary sm:text-xs transition-all" />
+                </div>
+                <button @click="addLink" class="inline-flex items-center justify-center shrink-0 w-8 h-8 font-semibold text-primary hover:text-primary transition-colors bg-primary/10 hover:bg-primary/20 rounded-lg border border-primary/10" title="Añadir enlace">
+                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                </button>
+              </div>
+            </div>
+          </div>
 
           <!-- Action bar -->
           <div class="flex justify-between items-center gap-4 mt-2 pb-4">
@@ -1102,8 +1129,8 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+
         <!-- STEP 3: EDITOR & DEMO -->
-        <!-- STEP 3: MINIMALIST EDITOR & PREVIEW -->
         <DualPaneEditor
           v-else-if="currentStep === 3"
           key="step3"
