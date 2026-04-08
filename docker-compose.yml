@@ -57,5 +57,11 @@ services:
     volumes:
       - db_data:/var/lib/mysql
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --url http://frontend:5173
+    depends_on:
+      - frontend
+
 volumes:
   db_data:

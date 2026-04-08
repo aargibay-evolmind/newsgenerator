@@ -11,6 +11,7 @@ import {
   useSyncKnowledgeBase
 } from '../../articles/composables'
 import MainHeader from '@/components/MainHeader.vue';
+import GenerationProgress from '../components/GenerationProgress.vue'
 import DualPaneEditor from '../components/DualPaneEditor.vue'
 import GenerationStepper from '../components/GenerationStepper.vue'
 import { cleanMarkdown, reorganizeImageRefs } from '@/utils/markdown'
@@ -63,6 +64,7 @@ watch(searchIntent, (newIntent) => {
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const currentStep = ref(1)
+const generationResult = ref<'success' | 'placeholder' | 'error' | null>(null)
 const suggestedTopics = ref<string[]>([])
 const intentDescriptions: Record<string, string> = {
   'Informativo': 'Explica hechos, datos y conceptos generales.',
@@ -296,17 +298,6 @@ function removeMasterDLead(leadId: number) {
   masterDLeads.value = masterDLeads.value.filter((l: any) => l.id !== leadId)
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    successMessage.value = "✅ Copiado al portapapeles";
-    setTimeout(() => { successMessage.value = null }, 3000);
-  } catch (err) {
-    console.error('Failed to copy text: ', err);
-    errorMessage.value = "❌ Error al copiar al portapapeles";
-    setTimeout(() => { errorMessage.value = null }, 3000);
-  }
-}
 
 async function saveArticleToDb() {
   if (isSavingArticle.value) return;
@@ -397,8 +388,18 @@ async function handleGenerateArticle() {
   if (generateLoading.value) return;
   
   try {
+    generationResult.value = null;
     const response = await generateArticle(store.getGenerateArticlePayload())
     
+    // Check for infographics results
+    const hasRequestedInfographics = store.outlineList.some(item => item.included && item.infographic);
+    if (hasRequestedInfographics) {
+      const hasPlaceholders = response.markdown.includes('placehold.co');
+      generationResult.value = hasPlaceholders ? 'placeholder' : 'success';
+    } else {
+      generationResult.value = 'success';
+    }
+
     // Split metadata from markdown
     const parts = response.markdown.split('---METADATA---');
     if (parts.length >= 2 && parts[0] !== undefined && parts[1] !== undefined) {
@@ -419,8 +420,14 @@ async function handleGenerateArticle() {
       };
     }
     
-    goNext(3);
+    // Give time to read the status message
+    setTimeout(() => {
+      goNext(3);
+      // Reset after a short delay to avoid flicker during transition
+      setTimeout(() => { generationResult.value = null }, 500);
+    }, 2000);
   } catch (error: any) {
+    generationResult.value = 'error';
      console.error("Failed to generate final article", error)
      if (error?.message?.includes('429')) {
        errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar otro artículo con esta cuenta."
@@ -507,6 +514,22 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-screen bg-background dark:bg-dark-background overflow-hidden relative font-sans text-text dark:text-dark-text transition-colors duration-300">
     <MainHeader />
+
+    <!-- Generation Loading Overlay -->
+    <transition
+      enter-active-class="transition-opacity duration-300 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-500 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <GenerationProgress 
+        v-if="generateLoading" 
+        :needs-infographic="store.outlineList.some(item => item.included && item.infographic)"
+        :result-status="generationResult"
+      />
+    </transition>
 
     <!-- Global Error Toast -->
     <transition
@@ -663,7 +686,7 @@ onUnmounted(() => {
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-3">
                     <label for="ganchos" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Ganchos / Leads <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
-                    <p class="text-xs text-secondary dark:text-dark-text/30">Frases persuasivas para abrir la noticia y atraer al lector (Estilo MasterD).</p>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Frases persuasivas para abrir la noticia y atraer al lector.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -918,7 +941,7 @@ onUnmounted(() => {
         </div>
 
         <!-- STEP 2: THE ARCHITECT -->
-        <div v-else-if="currentStep === 2" class="flex flex-col gap-8 pb-10 max-w-4xl mx-auto w-full" key="step2">
+        <div v-else-if="currentStep === 2" class="flex flex-col gap-8 pb-10 max-w-7xl mx-auto w-full" key="step2">
           <!-- MAIN AREA: OUTLINE -->
           <div class="space-y-6">
             <!-- Outline Card -->
@@ -1030,7 +1053,7 @@ onUnmounted(() => {
           </div>
 
           <!-- LEADS & LINKS (Sequential now) -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="flex flex-col gap-8">
             <!-- Leads / Ganchos Card -->
             <div class="w-full bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
               <h2 class="text-sm font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-3 mb-6 flex items-center gap-2">
@@ -1055,18 +1078,12 @@ onUnmounted(() => {
                   <div class="flex items-center shrink-0 mt-0.5">
                     <input type="checkbox" v-model="lead.included" class="h-3.5 w-3.5 rounded border-secondary/30 dark:border-dark-border text-primary focus:ring-primary bg-transparent transition duration-150 cursor-pointer" />
                   </div>
-                  <div class="flex-1 flex flex-col gap-1.5">
+                  <div class="flex-1">
                     <textarea v-model="lead.text" rows="2" class="w-full border-0 bg-transparent p-0 text-[11px] text-inherit focus:ring-0 resize-none min-h-[40px] font-medium" :class="!lead.included && 'opacity-50'"></textarea>
-                    <div class="flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button @click="copyText(lead.text)" class="text-[9px] text-primary/60 hover:text-primary font-bold flex items-center gap-1">
-                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                        COPIAR
-                      </button>
-                      <button @click="removeMasterDLead(lead.id)" class="text-secondary/30 hover:text-red-500 transition-colors">
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
-                      </button>
-                    </div>
                   </div>
+                  <button @click="removeMasterDLead(lead.id)" class="opacity-0 group-hover:opacity-100 text-secondary/30 hover:text-red-500 transition-all p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0 self-start mt-0.5">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
+                  </button>
                 </div>
               </div>
               <div v-else class="text-center py-6 border-2 border-dashed border-secondary/10 dark:border-dark-border rounded-xl">

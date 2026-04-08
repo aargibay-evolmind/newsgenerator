@@ -594,11 +594,11 @@ onUnmounted(() => {
                   <p class="flex-1">{{ lead.trim() }}</p>
                   <button 
                     @click="copyField(lead.trim(), `lead-${idx}`)"
-                    class="shrink-0 p-1 rounded-md bg-secondary/5 dark:bg-dark-surface opacity-0 group-hover/lead:opacity-100 transition-all hover:bg-primary/10 text-secondary hover:text-primary"
+                    class="shrink-0 p-1.5 rounded-md bg-secondary/5 dark:bg-dark-surface opacity-0 group-hover/lead:opacity-100 transition-all hover:bg-primary/10 text-secondary hover:text-primary"
                     title="Copiar este gancho"
                   >
-                    <svg v-if="copiedField === `lead-${idx}`" class="h-3 w-3 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
-                    <svg v-else class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m-7 0h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                    <svg v-if="copiedField === `lead-${idx}`" class="h-3.5 w-3.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
+                    <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                   </button>
                 </div>
               </div>
