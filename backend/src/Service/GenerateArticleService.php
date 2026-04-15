@@ -12,10 +12,11 @@ class GenerateArticleService
 
     /**
      * @param array<string, mixed> $payload
-     * @return string
+     * @return array
      */
-    public function generate(array $payload): string
+    public function generate(array $payload): array
     {
+        $startTime = microtime(true);
         $title = $payload['title'] ?? 'Sin Título';
         $keywords = $payload['keywords'] ?? [];
         $tone = (int) ($payload['tone'] ?? 50);
@@ -30,7 +31,7 @@ class GenerateArticleService
         $masterDLeads = $payload['masterDLeads'] ?? [];
         $contentMode = $payload['contentMode'] ?? null;
 
-        $logFile = '/tmp/infographic_debug.log';
+        $logFile = __DIR__ . '/../../var/log/article_gen.log';
         file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] Starting article generation. Outline items: " . count($outline) . "\n", FILE_APPEND);
         foreach ($outline as $idx => $item) {
             file_put_contents($logFile, "Item $idx: " . ($item['text'] ?? 'no text') . " - Infographic: " . (isset($item['infographic']) ? ($item['infographic'] ? 'true' : 'false') : 'not set') . "\n", FILE_APPEND);
@@ -69,13 +70,12 @@ class GenerateArticleService
         $prompt .= sprintf("- **Tono Configurado:** %s. Actúa como un 'Career Coach' experto; evita el marketing vacío, ofrece asesoramiento técnico, empático y profesional.\n", $toneStr);
 
         $prompt .= "\n### II. ESTRUCTURA Y SEO AVANZADO (OBLIGATORIO):\n";
-        $prompt .= sprintf("- **Respuesta Directa (AEO):** Bajo el H1 principal, redacta un resumen de máximo 50 palabras que responda la duda central del usuario (para capturar AI Overviews y Snippets).\n");
+        $prompt .= sprintf("- **Respuesta Directa (AEO):** Comienza el artículo redactando un resumen de máximo 50 palabras que responda la duda central del usuario (para capturar AI Overviews y Snippets). **IMPORTANTE: No incluyas el título principal ni ningún encabezado H1 en el cuerpo del texto, ya que se añadirá automáticamente desde el sistema.**\n");
         
-        $leadsContent = !empty($masterDLeads) ? implode("\n\n", $masterDLeads) : "1-2 ganchos directos y persuasivos";
+        $leadsContent = !empty($masterDLeads) ? implode("\n\n", $masterDLeads) : "exactamente 2 ganchos: el primero un 'hook' de lectura impactante y el segundo una llamada a la acción (CTA) persuasiva";
 
         $prompt .= "- **Integración de Ganchos (IMPORTANTE):** NO incluyas los ganchos o leads dentro del cuerpo del artículo. Debes generarlos o integrarlos EXCLUSIVAMENTE en el bloque de metadatos al final. Si hay varios ganchos seleccionados, lístalos uno tras otro separados por un salto de línea doble (\n\n). No uses negrita (`**`) ni ningún otro formato Markdown en los ganchos.\n";
 
-        $prompt .= "- **Navegación Interactiva (CRÍTICO):** Únicamente después de los 'Leads' (si los hay) y antes de la primera sección del esquema, incluye el índice de contenidos usando estrictamente: `## ÍNDICE DE CONTENIDOS` seguido de una lista de enlaces Markdown: `- [Texto del enlace](#ancla-del-encabezado)`. Asegúrate de que cada enlace apunte al ID correcto del encabezado. **No la repitas nunca en el cuerpo del texto ni crees otros encabezados para ella.**\n";
         $prompt .= "- **Autoridad E-E-A-T:** Cita fuentes oficiales (Ministerios, SEPE, BOE, portales regionales). Usa terminología precisa: **nota de corte**, **itinerarios formativos**, **unidades de competencia**.\n";
         $prompt .= "- **Impacto y Empleabilidad:** Siempre que el tema lo permita, incluye datos de mercado laboral 2026 (sectores en auge, salarios medios previstos) para justificar el valor del curso o FP.\n";
         $prompt .= "- **Comparativa Multizona:** Emplea al menos una **tabla Markdown** para comparar plazos, plazas o requisitos entre diferentes CCAA o modalidades.\n";
@@ -153,14 +153,39 @@ class GenerateArticleService
              }
         }
 
-        $prompt .= "\n\nRedacta el contenido completo en español utilizando Markdown válido.";
+        $exampleRefs = $payload['exampleUrls'] ?? [];
+        if (!empty($exampleRefs)) {
+            $prompt .= "\n### REFERENCIAS DE TONO Y ESTILO (EMULAR):\n";
+            foreach ($exampleRefs as $ref) {
+                if (!empty($ref['content'])) {
+                    $prompt .= sprintf("- Fuente: %s\n- Estilo a emular:\n%s\n\n", $ref['title'] ?? $ref['url'], mb_substr($ref['content'], 0, 1500));
+                }
+            }
+        }
 
-        $models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+        $authorityRefs = $payload['authorityUrls'] ?? [];
+        if (!empty($authorityRefs)) {
+            $prompt .= "\n### FUENTES DE AUTORIDAD E INFORMACIÓN (DATOS TÉCNICOS):\n";
+            foreach ($authorityRefs as $ref) {
+                if (!empty($ref['content'])) {
+                    $prompt .= sprintf("- Fuente: %s\n- Datos verificados:\n%s\n\n", $ref['title'] ?? $ref['url'], mb_substr($ref['content'], 0, 2000));
+                }
+            }
+        }
+
+        $prompt .= "\n\nRedacta el contenido completo en español utilizando Markdown válido. **PROHIBIDO: No utilices etiquetas HTML en ningún caso (como <a>, <div>, <p>). Utiliza exclusivamente sintaxis Markdown para enlaces: [texto](url).**";
+
+        $models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'];
         $result = $this->gemini->generateContent($prompt, $models);
+        $textModelUsed = $result['_usedModel'] ?? 'unknown';
 
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
             $markdown = $result['candidates'][0]['content']['parts'][0]['text'];
-            file_put_contents($logFile, "Article markdown generated. Length: " . strlen($markdown) . " chars. Preview: " . substr($markdown, 0, 500) . "...\n", FILE_APPEND);
+            file_put_contents($logFile, "Article markdown generated with $textModelUsed. Length: " . strlen($markdown) . " chars. Preview: " . substr($markdown, 0, 500) . "...\n", FILE_APPEND);
+
+            $imagesGenerated = 0;
+            $imageModelUsed = 'none';
+            $imageSuccess = false;
 
             // Inject Infographics
             if (!empty($infographicMarkers)) {
@@ -169,8 +194,15 @@ class GenerateArticleService
                 foreach ($infographicMarkers as $headerText) {
                     try {
                         file_put_contents($logFile, "Generating infographic for: " . $headerText . "\n", FILE_APPEND);
-                        $injectedContent = $this->infographicService->generateForSection($headerText, $title);
+                        $infoResult = $this->infographicService->generateForSection($headerText, $title);
+                        $injectedContent = $infoResult['markdown'];
                         
+                        if ($infoResult['success']) {
+                            $imagesGenerated++;
+                            $imageSuccess = true;
+                            if ($imageModelUsed === 'none') $imageModelUsed = $infoResult['model'];
+                        }
+
                         // Flexible regex for headers: matches any # level followed by the header text
                         // Allows for optional numbering like "1. ", "1.", etc.
                         $pattern = '/^(#+\s*)(?:\d+[\.\)]?\s*)?' . preg_quote($headerText, '/') . '(.*)$/mi';
@@ -195,7 +227,18 @@ class GenerateArticleService
                 }
             }
 
-            return $markdown;
+            $endTime = microtime(true);
+
+            return [
+                'markdown' => $markdown,
+                'debug' => [
+                    'timeTakenSeconds' => round($endTime - $startTime, 2),
+                    'textModelUsed' => $textModelUsed,
+                    'imageModelUsed' => $imageModelUsed,
+                    'imagesGenerated' => $imagesGenerated,
+                    'imageSuccess' => $imageSuccess
+                ]
+            ];
         }
 
         throw new \Exception('Failed to generate full markdown article content from AI.');

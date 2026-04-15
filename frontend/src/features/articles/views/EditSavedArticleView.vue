@@ -14,6 +14,7 @@ const { data: article, isLoading, isError } = useSavedArticle(articleId)
 const { mutateAsync: updateArticleMutation, isPending: isUpdating } = useUpdateArticle()
 
 const generatedMarkdown = ref('')
+const isArticleSaved = ref(false)
 const articleMetadata = ref({
   friendlyUrl: '',
   metaTitle: '',
@@ -31,7 +32,16 @@ watch(article, (newArticle) => {
   if (newArticle?.data?.metadata) {
     articleMetadata.value = { ...newArticle.data.metadata }
   }
+  isArticleSaved.value = true; // Initially saved
 }, { immediate: true })
+
+watch(generatedMarkdown, () => {
+  isArticleSaved.value = false;
+})
+
+watch(articleMetadata, () => {
+  isArticleSaved.value = false;
+}, { deep: true })
 
 const successMessage = ref<string | null>(null)
 const errorMessage = ref<string | null>(null)
@@ -51,6 +61,7 @@ async function handleSave() {
         }
       }
     });
+    isArticleSaved.value = true;
     successMessage.value = "✅ Artículo guardado correctamente.";
     setTimeout(() => { successMessage.value = null; }, 4000);
   } catch (error) {
@@ -95,6 +106,7 @@ onUnmounted(() => {
         v-model="generatedMarkdown"
         :title="article.title"
         :is-saving="isUpdating"
+        :is-saved="isArticleSaved"
         :metadata="articleMetadata"
         save-prompt="Guardar Cambios"
         back-prompt="Volver"

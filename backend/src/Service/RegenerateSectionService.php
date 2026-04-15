@@ -30,7 +30,7 @@ class RegenerateSectionService
         $prompt .= "- Devuelve solo el Markdown del cuerpo de la sección, SIN el título del encabezado.\n";
         $prompt .= "- Prohibido incluir notas, introducciones o textos fuera del contenido final.\n";
 
-        $models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro'];
+        $models = ['gemini-3-flash-preview', 'gemini-2.0-flash', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'];
         $result = $this->gemini->generateContent($prompt, $models);
 
         if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {

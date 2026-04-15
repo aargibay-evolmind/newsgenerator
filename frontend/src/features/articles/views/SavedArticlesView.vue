@@ -4,6 +4,7 @@ import { useSavedArticles, useDeleteArticle } from '../composables';
 import MainHeader from '@/components/MainHeader.vue';
 import { useRouter } from 'vue-router';
 import { useArticleStore } from '../store/articleStore';
+import { BLOGS } from '../constants/blogs';
 
 const router = useRouter();
 const { data: articles, isLoading, isError } = useSavedArticles();
@@ -12,6 +13,13 @@ const { getToneLabel } = useArticleStore();
 
 const searchQuery = ref('');
 const sortBy = ref<'newest' | 'oldest' | 'alphabetical'>('newest');
+const selectedBlogFilter = ref<number | null>(null);
+
+function getBlogName(blogId: number | null) {
+  if (blogId === null) return null;
+  const blog = BLOGS.find(b => b.id === blogId);
+  return blog ? blog.name : null;
+}
 
 function goToArticle(id: string) {
   router.push({ name: 'SavedArticleDetail', params: { id } });
@@ -42,9 +50,13 @@ const stats = computed(() => {
 const filteredArticles = computed(() => {
   if (!articles.value) return [];
   
-  const result = articles.value.filter((art: any) => 
+  let result = articles.value.filter((art: any) => 
     art.title.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
+
+  if (selectedBlogFilter.value !== null) {
+    result = result.filter((art: any) => art.blog_id === selectedBlogFilter.value);
+  }
   
   if (sortBy.value === 'newest') {
     result.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -131,6 +143,16 @@ const filteredArticles = computed(() => {
             <option value="oldest">Más antiguos</option>
             <option value="alphabetical">Alfabético</option>
           </select>
+
+          <select 
+            v-model="selectedBlogFilter"
+            class="px-4 py-3.5 bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-2xl text-sm font-bold text-text dark:text-dark-text outline-none focus:ring-2 focus:ring-primary/20 shadow-sm cursor-pointer transition-colors"
+          >
+            <option :value="null">Todos los blogs</option>
+            <option v-for="blog in BLOGS" :key="blog.id" :value="blog.id">
+              {{ blog.name }}
+            </option>
+          </select>
         </div>
       </div>
 
@@ -193,6 +215,9 @@ const filteredArticles = computed(() => {
               <span v-if="article.data?.readingTime" class="px-2.5 py-1 bg-primary/5 text-[10px] font-black text-primary rounded-full uppercase tracking-wider flex items-center gap-1">
                 <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {{ article.data.readingTime }} min
+              </span>
+              <span v-if="article.blog_id" class="px-2.5 py-1 bg-emerald-500/10 text-[10px] font-black text-emerald-600 rounded-full uppercase tracking-wider truncate max-w-[120px]" :title="getBlogName(article.blog_id) || ''">
+                {{ getBlogName(article.blog_id) }}
               </span>
             </div>
 

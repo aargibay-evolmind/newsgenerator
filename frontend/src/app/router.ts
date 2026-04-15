@@ -13,6 +13,7 @@ const router = createRouter({
       name: 'Generator',
       component: () => import('@/features/articles/views/ArticleGeneratorView.vue'),
     },
+/*
     {
       path: '/login',
       name: 'Login',
@@ -23,6 +24,7 @@ const router = createRouter({
       name: 'Register',
       component: () => import('@/features/auth/views/RegisterView.vue'),
     },
+*/
     {
       path: '/mis-noticias/:id',
       name: 'SavedArticleDetail',

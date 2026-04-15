@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { OutlineItem, ReferenceLink, LeadItem } from '../types';
 
 export type ContentMode = 'quick-guide' | 'news-brief' | 'deep-dive' | 'storytelling' | null;
@@ -18,14 +18,23 @@ const INTENT_PROMPTS: Record<string, string> = {
   'Comparativo': 'Objetivo: Analizar y comparar. Establece paralelismos claros entre las distintas opciones, destacando ventajas, inconvenientes y requisitos de cada camino para ayudar en la decisión.'
 };
 
+const MODE_PROMPTS: Record<string, string> = {
+  'quick-guide':  'Estilo Guía Rápida: Párrafos de máximo 3 frases. Prioriza bullet points y listas. Sin rodeos, cada sección responde una pregunta concreta.',
+  'news-brief':   'Estilo Noticia Breve: Estructura de pirámide invertida. Párrafos de 2-4 frases, directos y factuales. Tono periodístico neutral.',
+  'deep-dive':    'Estilo Inmersivo: Párrafos ricos y detallados (5-8 frases). Incluye análisis profundo, contexto histórico y comparativas.',
+  'storytelling': 'Estilo Crónica: Narrativo y envolvente. Comienza secciones con ganchos emocionales o anécdotas. Ritmo variable y transiciones fluidas.'
+};
+
 export const useArticleStore = defineStore('article', () => {
   // Step 1 State
   const blogTitle = ref('');
   const keywords = ref<string[]>([]);
   const keyPoints = ref<string[]>([]);
   const masterDLeads = ref<LeadItem[]>([]);
-  const referenceUrls = ref<string[]>([]);
-  const scrapedReferences = ref<{url: string, title: string}[]>([]);
+  const exampleUrls = ref<string[]>([]);
+  const authorityUrls = ref<string[]>([]);
+  const scrapedExampleUrls = ref<{url: string, title: string, content?: string}[]>([]);
+  const scrapedAuthorityUrls = ref<{url: string, title: string, content?: string}[]>([]);
   const additionalContext = ref('');
 
   // Advanced Context
@@ -35,6 +44,7 @@ export const useArticleStore = defineStore('article', () => {
 
   // Content Mode
   const contentMode = ref<ContentMode>(null);
+  const selectedBlogId = ref<number | null>(null);
 
   // Step 2 State (Config)
   const toneValue = ref(0);
@@ -67,23 +77,36 @@ export const useArticleStore = defineStore('article', () => {
       toneValue.value = preset.toneValue;
       audienceValue.value = preset.audienceValue;
       searchIntent.value = preset.searchIntent;
-      applyIntentPrompt(preset.searchIntent);
+      // applyIntentPrompt will be triggered by the watch(searchIntent)
     }
   }
 
-  function applyIntentPrompt(intent: string) {
-    const newPrompt = INTENT_PROMPTS[intent] || '';
+  function applyIntentPrompt(intent: string, mode: ContentMode = null) {
+    const intentPrompt = INTENT_PROMPTS[intent] || '';
+    const modePrompt = mode ? (MODE_PROMPTS[mode] || '') : '';
+    
+    // Build combined prompt: Mode specific style + Intent objective
+    let newPrompt = '';
+    if (modePrompt && intentPrompt) {
+      newPrompt = `${modePrompt} ${intentPrompt}`;
+    } else {
+      newPrompt = modePrompt || intentPrompt;
+    }
+
     if (!newPrompt) return;
 
-    if (!additionalContext.value.trim()) {
+    const currentContext = additionalContext.value.trim();
+
+    if (!currentContext) {
       // If empty, just set it
       additionalContext.value = newPrompt;
     } else if (lastAppliedIntentPrompt.value && additionalContext.value.includes(lastAppliedIntentPrompt.value)) {
       // Smart replace: swap the old preset prompt with the new one
       additionalContext.value = additionalContext.value.replace(lastAppliedIntentPrompt.value, newPrompt);
     } else {
-      // Append if it's not already there and we can't safely replace
+      // If the new prompt is already part of the content (maybe appended before), don't add it again
       if (!additionalContext.value.includes(newPrompt)) {
+        // Append at the top but separate from existing content
         additionalContext.value = newPrompt + '\n\n' + additionalContext.value;
       }
     }
@@ -91,7 +114,11 @@ export const useArticleStore = defineStore('article', () => {
     lastAppliedIntentPrompt.value = newPrompt;
   }
 
-  // Actions to conveniently get payload data
+  // Reactive watcher to ensure prompts stay in sync when either the intent or the mode changes
+  watch([searchIntent, contentMode], ([newIntent, newMode]) => {
+    applyIntentPrompt(newIntent, newMode as ContentMode);
+  }, { immediate: false });
+
   function getGenerateOutlinePayload() {
     return {
       title: blogTitle.value,
@@ -104,7 +131,9 @@ export const useArticleStore = defineStore('article', () => {
       tone: toneValue.value,
       sectionCount: sectionCount.value,
       contentMode: contentMode.value,
-      referenceUrls: scrapedReferences.value.map(r => r.url).concat(referenceUrls.value)
+      blogId: selectedBlogId.value,
+      exampleUrls: scrapedExampleUrls.value.map(r => ({ url: r.url, title: r.title, content: r.content })),
+      authorityUrls: scrapedAuthorityUrls.value.map(r => ({ url: r.url, title: r.title, content: r.content }))
     };
   }
 
@@ -119,8 +148,11 @@ export const useArticleStore = defineStore('article', () => {
       additionalContext: additionalContext.value,
       tone: toneValue.value,
       contentMode: contentMode.value,
+      blogId: selectedBlogId.value,
       includeLists: includeLists.value,
       includeTables: includeTables.value,
+      exampleUrls: scrapedExampleUrls.value.map(r => ({ url: r.url, title: r.title, content: r.content })),
+      authorityUrls: scrapedAuthorityUrls.value.map(r => ({ url: r.url, title: r.title, content: r.content })),
       // Only send included items
       outline: outlineList.value
         .filter(item => item.included)
@@ -132,18 +164,49 @@ export const useArticleStore = defineStore('article', () => {
     };
   }
 
+  const resetTrigger = ref(0);
+
+  function reset() {
+    blogTitle.value = '';
+    keywords.value = [];
+    keyPoints.value = [];
+    masterDLeads.value = [];
+    exampleUrls.value = [];
+    authorityUrls.value = [];
+    scrapedExampleUrls.value = [];
+    scrapedAuthorityUrls.value = [];
+    additionalContext.value = '';
+    audienceValue.value = 0;
+    searchIntent.value = 'Informativo';
+    lastAppliedIntentPrompt.value = '';
+    contentMode.value = null;
+    selectedBlogId.value = null;
+    toneValue.value = 0;
+    includeLists.value = true;
+    includeTables.value = false;
+    sectionCount.value = 7;
+    outlineList.value = [];
+    suggestedLinks.value = [];
+    uploadedImages.value = [];
+    
+    resetTrigger.value++;
+  }
+
   return {
     // State
     blogTitle,
     keywords,
     keyPoints,
     masterDLeads,
-    referenceUrls,
-    scrapedReferences,
+    exampleUrls,
+    authorityUrls,
+    scrapedExampleUrls,
+    scrapedAuthorityUrls,
     additionalContext,
     audienceValue,
     searchIntent,
     contentMode,
+    selectedBlogId,
     toneValue,
     includeLists,
     includeTables,
@@ -157,6 +220,8 @@ export const useArticleStore = defineStore('article', () => {
     applyModePresets,
     applyIntentPrompt,
     getGenerateOutlinePayload,
-    getGenerateArticlePayload
+    getGenerateArticlePayload,
+    resetTrigger,
+    reset
   };
 });

@@ -3,8 +3,10 @@ import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { Sun, Moon } from 'lucide-vue-next';
 import { useDarkMode } from '../composables/useDarkMode';
+import { useArticleStore } from '../features/articles/store/articleStore';
 
 const route = useRoute();
+const articleStore = useArticleStore();
 const { isDark, toggleDark, initDark } = useDarkMode();
 
 onMounted(() => {
@@ -52,23 +54,24 @@ const activeLink = computed(() => {
           </router-link>
           <router-link 
             to="/generador" 
+            @click="articleStore.reset()"
             class="text-xs font-bold transition-colors"
             :class="activeLink === 'nuevo' ? 'text-primary' : 'text-secondary dark:text-dark-text/70 hover:text-primary dark:hover:text-primary'"
           >
             Nuevo Artículo
           </router-link>
           <div class="h-4 w-px bg-secondary/10 dark:bg-dark-border mx-1"></div>
-          <router-link 
+          <!-- <router-link 
             to="/login" 
             class="px-4 py-2 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/10 hover:scale-105 active:scale-95"
           >
             Iniciar Sesión
-          </router-link>
+          </router-link> -->
         </div>
 
         <!-- Mobile Menu Placeholder -->
         <div class="md:hidden flex items-center">
-          <router-link to="/login" class="text-[10px] font-black text-primary uppercase tracking-widest">Login</router-link>
+          <!-- <router-link to="/login" class="text-[10px] font-black text-primary uppercase tracking-widest">Login</router-link> -->
         </div>
       </div>
     </div>

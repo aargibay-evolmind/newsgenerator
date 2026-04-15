@@ -75,5 +75,5 @@ export const ArticleAPI = {
   syncKnowledgeBase: () =>
     apiClient<{ total: number; synced: number }>('/knowledge-base/sync', {
       method: 'POST'
-    }),
+    })
 };

@@ -17,6 +17,7 @@ class SaveArticleService
         $article->setTitle($payload['title'] ?? 'Untitled');
         $article->setData($payload['data'] ?? []);
         $article->setUserId($payload['user_id'] ?? null);
+        $article->setBlogId($payload['blog_id'] ?? null);
 
         $this->articleRepository->save($article, true);
 

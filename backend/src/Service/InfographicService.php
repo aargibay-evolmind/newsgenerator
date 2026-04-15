@@ -15,7 +15,7 @@ class InfographicService
      */
     public function generateForSection(string $sectionText, string $articleTitle): string
     {
-        $logFile = '/tmp/infographic_debug.log';
+        $logFile = __DIR__ . '/../../var/log/infographic.log';
         file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] InfographicService: Generating for $sectionText\n", FILE_APPEND);
 
         // 1. Generate Structured Data
@@ -32,7 +32,7 @@ class InfographicService
         $structuredData = '';
         try {
             // Using a text model to pre-fetch the data points
-            $textResult = $this->gemini->generateContent($dataPrompt, ['gemini-2.5-flash', 'gemini-2.0-flash']);
+            $textResult = $this->gemini->generateContent($dataPrompt, ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview']);
             if (isset($textResult['candidates'][0]['content']['parts'][0]['text'])) {
                 $structuredData = trim($textResult['candidates'][0]['content']['parts'][0]['text']);
                 file_put_contents($logFile, "InfographicService: Structured data: \n$structuredData\n", FILE_APPEND);
@@ -93,6 +93,10 @@ class InfographicService
 
         // 4. Combine Structured Text + Image into a single Markdown block
         $finalMarkdown = sprintf("\n\n### Datos Clave: %s\n\n%s\n\n%s\n\n%s\n", $sectionText, $structuredData, $imageMarkdown, $imageReference);
-        return $finalMarkdown;
+        return [
+            'markdown' => $finalMarkdown,
+            'success' => $base64Image !== null,
+            'model' => $base64Image !== null ? 'gemini-3.1-flash-image-preview' : 'none'
+        ];
     }
 }

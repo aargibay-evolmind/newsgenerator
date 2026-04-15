@@ -30,10 +30,10 @@ class GenerateArticleAction
         }
 
         try {
-            $markdown = $this->domainService->generate($payload);
-            return $this->responder->respond(['markdown' => $markdown]);
+            $result = $this->domainService->generate($payload);
+            return $this->responder->respond($result);
         } catch (\Exception $e) {
-            return $this->responder->respondError($e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), 500);
+            return $this->responder->respondError($e->getMessage(), 500);
         }
     }
 }

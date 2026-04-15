@@ -16,9 +16,6 @@ class UrlScraperService
      */
     public function scrape(string $url): array
     {
-        // Simple scraping strategy just to get the title for preview purposes
-        // Real-world implementation would parse article text and metadata
-        
         try {
             $response = $this->httpClient->request('GET', $url, [
                 'timeout' => 10,
@@ -34,9 +31,20 @@ class UrlScraperService
                 $title = trim(strip_tags($matches[1]));
             }
 
+            // Extract content: Remove script, style, and nav tags
+            $content = preg_replace('/<(script|style|nav|footer|header|aside).*?<\/ \1>/ims', '', $html);
+            $content = strip_tags($content);
+            $content = html_entity_decode($content);
+            $content = preg_replace('/\s+/', ' ', $content);
+            $content = trim($content);
+
+            // Limit content length to avoid hitting token limits early
+            $content = mb_substr($content, 0, 5000);
+
             return [
                 'url' => $url,
-                'title' => $title
+                'title' => $title,
+                'content' => $content
             ];
             
         } catch (\Exception $e) {
@@ -44,6 +52,7 @@ class UrlScraperService
             return [
                 'url' => $url,
                 'title' => parse_url($url, PHP_URL_HOST) ?? 'Enlace de Referencia',
+                'content' => ''
             ];
         }
     }

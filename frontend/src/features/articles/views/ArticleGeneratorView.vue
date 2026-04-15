@@ -2,6 +2,7 @@
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useArticleStore } from '../../articles/store/articleStore'
+import { BLOGS } from '../constants/blogs'
 import { 
   useSuggestTopics, 
   useUrlScraping, 
@@ -22,12 +23,15 @@ const {
   blogTitle,
   keywords: tags,
   keyPoints,
-  referenceUrls,
-  scrapedReferences,
+  exampleUrls,
+  authorityUrls,
+  scrapedExampleUrls,
+  scrapedAuthorityUrls,
   additionalContext,
   audienceValue,
   searchIntent,
   contentMode,
+  selectedBlogId,
   toneValue,
   includeLists,
   includeTables,
@@ -51,20 +55,22 @@ const { mutate: syncKB } = useSyncKnowledgeBase()
 
 onMounted(() => {
   syncKB()
-  // Apply initial intent prompt if context is empty
-  if (!additionalContext.value.trim()) {
-    applyIntentPrompt(searchIntent.value);
-  }
 })
 
-watch(searchIntent, (newIntent) => {
-  applyIntentPrompt(newIntent);
+
+
+watch(() => store.resetTrigger, () => {
+  currentStep.value = 1;
 })
 
 const errorMessage = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const currentStep = ref(1)
+const isGeneratingArticle = ref(false)
+const isArticleSaved = ref(false)
 const generationResult = ref<'success' | 'placeholder' | 'error' | null>(null)
+const titleError = ref(false)
+const sectionCountError = ref(false)
 const suggestedTopics = ref<string[]>([])
 const intentDescriptions: Record<string, string> = {
   'Informativo': 'Explica hechos, datos y conceptos generales.',
@@ -162,34 +168,101 @@ async function handleSuggestTopics() {
 }
 
 const referenceUrl = ref('')
+const exampleUrlInput = ref('')
+const authorityUrlInput = ref('')
 
-async function handleScrape() {
-  if (!referenceUrl.value.includes('http') || isScraping.value) return;
+async function handleScrape(type: 'example' | 'authority') {
+  const url = type === 'example' ? exampleUrlInput.value : authorityUrlInput.value
+  if (!url.includes('http') || isScraping.value) return;
   
   try {
-    const data = await scrapeUrl({ url: referenceUrl.value })
-    scrapedReferences.value.push(data)
-    referenceUrl.value = ''
+    const data = await scrapeUrl({ url })
+    if (type === 'example') {
+      scrapedExampleUrls.value.push(data)
+      exampleUrlInput.value = ''
+    } else {
+      scrapedAuthorityUrls.value.push(data)
+      authorityUrlInput.value = ''
+    }
   } catch (error: any) {
     console.error('Failed to scrape URL:', error)
     if (error?.message?.includes('429')) {
       errorMessage.value = "⚠️ Límite de peticiones alcanzado. Espera un minuto."
-      setTimeout(() => { errorMessage.value = null }, 5000)
     } else if (error?.message?.includes('503')) {
       errorMessage.value = "⚠️ Los servidores de IA de Google están saturados en este momento. Intenta de nuevo en unos segundos."
-      setTimeout(() => { errorMessage.value = null }, 5000)
     } else {
       errorMessage.value = "No se pudo leer la URL."
-      setTimeout(() => { errorMessage.value = null }, 3000)
     }
+    setTimeout(() => { errorMessage.value = null }, 5000)
   }
 }
-function removeScrapedLink(url: string) {
-  scrapedReferences.value = scrapedReferences.value.filter((r: any) => r.url !== url)
+function removeScrapedLink(url: string, type: 'example' | 'authority') {
+  if (type === 'example') {
+    scrapedExampleUrls.value = scrapedExampleUrls.value.filter((r: any) => r.url !== url)
+  } else {
+    scrapedAuthorityUrls.value = scrapedAuthorityUrls.value.filter((r: any) => r.url !== url)
+  }
 }
 
-function removeUrlFallback(url: string) {
-  referenceUrls.value = referenceUrls.value.filter((u: string) => u !== url)
+async function handleProceedToArchitect() {
+  if (architectLoading.value) return;
+  isArticleSaved.value = false;
+
+  if (!blogTitle.value.trim()) {
+    titleError.value = true
+    return
+  }
+
+  if (sectionCount.value < 5 || sectionCount.value > 10) {
+    sectionCountError.value = true
+    return
+  }
+
+  try {
+    const response = await generateOutline(store.getGenerateOutlinePayload())
+    
+    if (response.debug) {
+      console.log("%c📐 Outline Planning Metrics:", "color: #00d4ff; font-weight: bold; font-size: 14px;");
+      console.log(`- ⏱️ Time taken: %c${response.debug.timeTakenSeconds}s`, "font-weight: bold; color: #4ade80;");
+      console.log(`- ✍️ Text model: %c${response.debug.textModelUsed}`, "font-weight: bold; color: #60a5fa;");
+    }
+
+    outlineList.value = response.outline;
+    
+    // Merge user-added references with AI-suggested links
+    const aiLinks = (response.suggestedLinks || []).map(link => ({
+      ...link,
+      included: false
+    }));
+    const userLinks = scrapedAuthorityUrls.value.map((ref, idx) => ({
+      id: 9000 + idx, // Use high IDs to avoid collision
+      title: ref.title || 'Referencia de Autoridad',
+      url: ref.url,
+      included: true // User-added links are included by default
+    }));
+    
+    suggestedLinks.value = [...userLinks, ...aiLinks];
+    if (response.masterDLeads && response.masterDLeads.length > 0) {
+      masterDLeads.value = response.masterDLeads.map((text: string, idx: number) => ({
+        id: 7000 + idx, // Use high IDs for AI leads
+        text,
+        included: true
+      }));
+    }
+    goNext(2);
+  } catch (error: any) {
+    console.error("Failed to generate outline", error)
+    if (error?.message?.includes('429')) {
+      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar el plan conceptual con esta cuenta."
+      setTimeout(() => { errorMessage.value = null }, 8000)
+    } else if (error?.message?.includes('503')) {
+      errorMessage.value = "⚠️ Los servidores de IA de Google están sobrecargados (503). Por favor, haz clic en Continuar de nuevo en unos segundos."
+      setTimeout(() => { errorMessage.value = null }, 8000)
+    } else {
+      errorMessage.value = "❌ Ocurrió un error inesperado al analizar la estructura. Intenta de nuevo."
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    }
+  }
 }
 
 function goNext(step: number) {
@@ -310,6 +383,7 @@ async function saveArticleToDb() {
     generatedMarkdown.value = reorganizeImageRefs(generatedMarkdown.value);
     await saveArticleMutation({
       title: blogTitle.value.trim() || 'Artículo Sin Título',
+      blog_id: selectedBlogId.value,
       data: {
         markdown: generatedMarkdown.value,
         tone: toneValue.value,
@@ -320,6 +394,7 @@ async function saveArticleToDb() {
         metadata: articleMetadata.value
       }
     });
+    isArticleSaved.value = true;
     successMessage.value = "✅ Artículo guardado correctamente.";
     setTimeout(() => { successMessage.value = null }, 4000);
   } catch (error: any) {
@@ -331,66 +406,24 @@ async function saveArticleToDb() {
 
 // Transitions
 
-const titleError = ref(false)
-const sectionCountError = ref(false)
-
-async function handleProceedToArchitect() {
-  if (architectLoading.value) return;
-
-  if (!blogTitle.value.trim()) {
-    titleError.value = true
-    return
-  }
-
-  if (sectionCount.value < 5 || sectionCount.value > 10) {
-    sectionCountError.value = true
-    return
-  }
-
-  try {
-    const response = await generateOutline(store.getGenerateOutlinePayload())
-    outlineList.value = response.outline;
-    
-    // Merge user-added references with AI-suggested links
-    const aiLinks = response.suggestedLinks || [];
-    const userLinks = scrapedReferences.value.map((ref, idx) => ({
-      id: 9000 + idx, // Use high IDs to avoid collision
-      title: ref.title || 'Referencia del Usuario',
-      url: ref.url,
-      included: true // User-added links are included by default
-    }));
-    
-    suggestedLinks.value = [...userLinks, ...aiLinks];
-    if (response.masterDLeads && response.masterDLeads.length > 0) {
-      masterDLeads.value = response.masterDLeads.map((text: string, idx: number) => ({
-        id: 7000 + idx, // Use high IDs for AI leads
-        text,
-        included: true
-      }));
-    }
-    goNext(2);
-  } catch (error: any) {
-    console.error("Failed to generate outline", error)
-    if (error?.message?.includes('429')) {
-      errorMessage.value = "⚠️ Límite de peticiones alcanzado. Google Gemini requiere esperar ~1 minuto antes de generar el plan conceptual con esta cuenta."
-      setTimeout(() => { errorMessage.value = null }, 8000)
-    } else if (error?.message?.includes('503')) {
-      errorMessage.value = "⚠️ Los servidores de IA de Google están sobrecargados (503). Por favor, haz clic en Continuar de nuevo en unos segundos."
-      setTimeout(() => { errorMessage.value = null }, 8000)
-    } else {
-      errorMessage.value = "❌ Ocurrió un error inesperado al analizar la estructura. Intenta de nuevo."
-      setTimeout(() => { errorMessage.value = null }, 5000)
-    }
-  }
-}
 
 async function handleGenerateArticle() {
-  if (generateLoading.value) return;
+  if (generateLoading.value || isGeneratingArticle.value) return;
+  isArticleSaved.value = false;
   
+  isGeneratingArticle.value = true;
   try {
     generationResult.value = null;
     const response = await generateArticle(store.getGenerateArticlePayload())
     
+    if (response.debug) {
+      console.log("%c🚀 Article Generation Metrics:", "color: #ff00ff; font-weight: bold; font-size: 14px;");
+      console.log(`- ⏱️ Time taken: %c${response.debug.timeTakenSeconds}s`, "font-weight: bold; color: #4ade80;");
+      console.log(`- ✍️ Text model: %c${response.debug.textModelUsed}`, "font-weight: bold; color: #60a5fa;");
+      console.log(`- 🖼️ Image model: %c${response.debug.imageModelUsed}`, "font-weight: bold; color: #f472b6;");
+      console.log(`- 📊 Images generated: %c${response.debug.imagesGenerated} (${response.debug.imageSuccess ? 'Success' : 'Failure/Placeholder'})`, "font-weight: bold;");
+    }
+
     // Check for infographics results
     const hasRequestedInfographics = store.outlineList.some(item => item.included && item.infographic);
     if (hasRequestedInfographics) {
@@ -424,9 +457,13 @@ async function handleGenerateArticle() {
     setTimeout(() => {
       goNext(3);
       // Reset after a short delay to avoid flicker during transition
-      setTimeout(() => { generationResult.value = null }, 500);
+      setTimeout(() => { 
+        generationResult.value = null;
+        isGeneratingArticle.value = false;
+      }, 500);
     }, 2000);
   } catch (error: any) {
+    isGeneratingArticle.value = false;
     generationResult.value = 'error';
      console.error("Failed to generate final article", error)
      if (error?.message?.includes('429')) {
@@ -525,7 +562,7 @@ onUnmounted(() => {
       leave-to-class="opacity-0"
     >
       <GenerationProgress 
-        v-if="generateLoading" 
+        v-if="generateLoading || isGeneratingArticle" 
         :needs-infographic="store.outlineList.some(item => item.included && item.infographic)"
         :result-status="generationResult"
       />
@@ -601,7 +638,7 @@ onUnmounted(() => {
                 
                 <!-- Quick Start Title -->
                 <div>
-                  <label for="blog-title" class="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Título del Artículo</label>
+                  <label for="blog-title" class="block text-sm font-bold text-text dark:text-dark-text mb-3">Título del Artículo</label>
                   <input
                     id="blog-title"
                     v-model="blogTitle"
@@ -655,8 +692,8 @@ onUnmounted(() => {
                 <!-- Structural Points -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label for="puntos-clave" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Estructura / Puntos Críticos</label>
-                    <p class="text-xs text-secondary dark:text-dark-text/30">Temas técnicos o requisitos legales que **deben** aparecer obligatoriamente en el cuerpo del artículo.</p>
+                    <label for="puntos-clave" class="block text-sm font-bold text-text dark:text-dark-text mb-1">Apartados del artículo / Headers</label>
+                    <p class="text-xs text-secondary dark:text-dark-text/30">Temas técnicos o secciones que deben aparecer obligatoriamente en el cuerpo del artículo.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
                     <input 
@@ -685,7 +722,7 @@ onUnmounted(() => {
                 <!-- Ganchos / Leads (MasterD Hooks) -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-3">
-                    <label for="ganchos" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Ganchos / Leads <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
+                    <label for="ganchos" class="block text-sm font-bold text-text dark:text-dark-text mb-1">Ganchos / Leads <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
                     <p class="text-xs text-secondary dark:text-dark-text/30">Frases persuasivas para abrir la noticia y atraer al lector.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
@@ -716,7 +753,7 @@ onUnmounted(() => {
                 <!-- Keywords (Moved from sidebar) -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
                   <div class="mb-4">
-                    <label class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Etiquetas / Keywords</label>
+                    <label class="block text-sm font-bold text-text dark:text-dark-text mb-1">Etiquetas / Keywords</label>
                     <p class="text-xs text-secondary dark:text-dark-text/30">Añade palabras clave para mejorar el enfoque del contenido y el SEO.</p>
                   </div>
                   <div class="flex gap-2 mb-4">
@@ -744,58 +781,118 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Reference URLs -->
-                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
-                  <div class="mb-4">
-                    <label for="reference-url" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">URLs de referencia <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
-                    <p class="text-xs text-secondary dark:text-dark-text/30">Añade enlaces a artículos, noticias o fuentes oficiales que la IA deba analizar para generar el contenido.</p>
-                  </div>
-                  <div class="flex gap-2 mb-4">
-                    <div class="relative flex-1 group ring-1 ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-background dark:bg-dark-background">
-                      <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <svg class="h-4 w-4 text-secondary/40 dark:text-dark-text/20 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                      </div>
-                      <input 
-                        id="reference-url"
-                        v-model="referenceUrl" 
-                        @keydown.enter.prevent="handleScrape"
-                        type="text" 
-                        class="block w-full border-0 py-3 pl-10 pr-4 text-text dark:text-dark-text placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
-                        placeholder="https://boe.es/articulo-importante..." 
-                      />
+                <!-- Reference URLs (Example & Authority) -->
+                <div class="pt-6 border-t border-secondary/10 dark:border-dark-border space-y-8">
+                  <!-- Section 1: Example URLs (Tone & Structure) -->
+                  <div>
+                    <div class="mb-4">
+                      <label for="example-url" class="block text-sm font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
+                        <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.172-1.172a4 4 0 115.656 5.656L17 12.586" /></svg>
+                        URL de Referencia (Estilo) 
+                        <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20 ml-auto text-xs">(Opcional)</span>
+                      </label>
+                      <p class="text-xs text-secondary dark:text-dark-text/30">Pega un enlace de un artículo cuyo tono y estructura quieras que la IA replique.</p>
                     </div>
-                    <button 
-                      @click="handleScrape" 
-                      :disabled="isScraping"
-                      class="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-sm transition-all hover:bg-primary/90 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <svg v-if="isScraping" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                      {{ isScraping ? 'Leyendo...' : 'Analizar URL' }}
-                    </button>
+                    <div class="flex gap-2 mb-4">
+                      <div class="relative flex-1 group ring-1 ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-background dark:bg-dark-background">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <svg class="h-4 w-4 text-secondary/40 dark:text-dark-text/20 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                        </div>
+                        <input 
+                          id="example-url"
+                          v-model="exampleUrlInput" 
+                          @keydown.enter.prevent="handleScrape('example')"
+                          type="text" 
+                          class="block w-full border-0 py-3 pl-10 pr-4 text-text dark:text-dark-text placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
+                          placeholder="https://ejemplo-estilo.com/articulo-original" 
+                        />
+                      </div>
+                      <button 
+                        @click="handleScrape('example')" 
+                        :disabled="isScraping"
+                        class="px-5 py-2.5 bg-primary/10 text-primary font-bold rounded-xl text-sm transition-all hover:bg-primary/20 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border border-primary/10"
+                      >
+                        <svg v-if="isScraping" class="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        {{ isScraping ? 'Leyendo...' : 'Analizar' }}
+                      </button>
+                    </div>
+
+                    <!-- Scraped Example URLs List -->
+                    <div class="space-y-2" v-if="scrapedExampleUrls.length > 0">
+                      <div v-for="(ref, index) in scrapedExampleUrls" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/10 dark:border-primary/20 group animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                          <div class="h-8 w-8 rounded-lg bg-background dark:bg-dark-surface border border-primary/20 dark:border-primary/40 flex items-center justify-center shrink-0">
+                             <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          </div>
+                          <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-bold text-text dark:text-dark-text truncate leading-tight">{{ ref.title || 'Nueva Referencia de Estilo' }}</span>
+                            <span class="text-[10px] text-secondary dark:text-dark-text/40 truncate">{{ ref.url }}</span>
+                          </div>
+                        </div>
+                        <button @click="removeScrapedLink(ref.url, 'example')" class="p-1 px-2 text-primary/40 hover:text-red-500 transition-colors" title="Eliminar referencia">
+                           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <!-- Scraped references list -->
-                  <div class="space-y-2" v-if="scrapedReferences.length > 0">
-                    <div v-for="(ref, index) in scrapedReferences" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/10 dark:border-primary/20 group animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div class="flex items-center gap-3 overflow-hidden">
-                        <div class="h-8 w-8 rounded-lg bg-background dark:bg-dark-surface border border-primary/20 dark:border-primary/40 flex items-center justify-center shrink-0">
-                           <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  <!-- Section 2: Authority URLs (Information & Facts) -->
+                  <div>
+                    <div class="mb-4">
+                      <label for="authority-url" class="block text-sm font-bold text-text dark:text-dark-text mb-1 flex items-center gap-2">
+                        <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                        URL de Autoridad (Información)
+                        <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20 ml-auto text-xs">(Opcional)</span>
+                      </label>
+                      <p class="text-xs text-secondary dark:text-dark-text/30">Fuentes oficiales, boletines o noticias de donde extraer información factual.</p>
+                    </div>
+                    <div class="flex gap-2 mb-4">
+                      <div class="relative flex-1 group ring-1 ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden transition-all bg-background dark:bg-dark-background">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                          <svg class="h-4 w-4 text-secondary/40 dark:text-dark-text/20 group-focus-within:text-primary transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                         </div>
-                        <div class="flex flex-col min-w-0">
-                          <span class="text-xs font-bold text-text dark:text-dark-text truncate leading-tight">{{ ref.title || 'Nueva Referencia' }}</span>
-                          <span class="text-[10px] text-secondary dark:text-dark-text/40 truncate">{{ ref.url }}</span>
-                        </div>
+                        <input 
+                          id="authority-url"
+                          v-model="authorityUrlInput" 
+                          @keydown.enter.prevent="handleScrape('authority')"
+                          type="text" 
+                          class="block w-full border-0 py-3 pl-10 pr-4 text-text dark:text-dark-text placeholder:text-secondary/40 dark:placeholder:text-dark-text/20 focus:outline-none focus:ring-0 sm:text-sm bg-transparent"
+                          placeholder="https://boe.es/noticia-oficial-importante" 
+                        />
                       </div>
-                      <button @click="removeScrapedLink(ref.url)" class="p-1 px-2 text-primary/40 hover:text-red-500 transition-colors" title="Eliminar referencia">
-                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                      <button 
+                        @click="handleScrape('authority')" 
+                        :disabled="isScraping"
+                        class="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-sm transition-all hover:bg-primary/90 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        <svg v-if="isScraping" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        {{ isScraping ? 'Leyendo...' : 'Analizar' }}
                       </button>
+                    </div>
+
+                    <!-- Scraped Authority URLs List -->
+                    <div class="space-y-2" v-if="scrapedAuthorityUrls.length > 0">
+                      <div v-for="(ref, index) in scrapedAuthorityUrls" :key="index" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/10 dark:border-primary/20 group animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                          <div class="h-8 w-8 rounded-lg bg-background dark:bg-dark-surface border border-primary/20 dark:border-primary/40 flex items-center justify-center shrink-0">
+                             <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          </div>
+                          <div class="flex flex-col min-w-0">
+                            <span class="text-xs font-bold text-text dark:text-dark-text truncate leading-tight">{{ ref.title || 'Referencia de Autoridad' }}</span>
+                            <span class="text-[10px] text-secondary dark:text-dark-text/40 truncate">{{ ref.url }}</span>
+                          </div>
+                        </div>
+                        <button @click="removeScrapedLink(ref.url, 'authority')" class="p-1 px-2 text-primary/40 hover:text-red-500 transition-colors" title="Eliminar referencia">
+                           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <!-- Context and Guidelines moved from sidebar -->
                 <div class="pt-6 border-t border-secondary/10 dark:border-dark-border">
-                  <label for="additional-context" class="block text-xs font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
+                  <label for="additional-context" class="block text-sm font-bold text-text dark:text-dark-text mb-1">Contexto y Directrices <span class="normal-case font-medium text-secondary/60 dark:text-dark-text/20">(Opcional)</span></label>
                   <p class="text-xs text-secondary dark:text-dark-text/30 mb-3">Añade indicaciones específicas para la IA: estilo, enfoque, datos a incluir o excluir, etc.</p>
                   <textarea
                     id="additional-context"
@@ -826,7 +923,7 @@ onUnmounted(() => {
 
                     <!-- Content Mode Select -->
                     <div>
-                      <label for="content-mode" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Configuración Rápida</label>
+                      <label for="content-mode" class="block text-sm font-bold text-text dark:text-dark-text mb-2.5">Configuración Rápida</label>
                       <select
                         id="content-mode"
                         v-model="contentMode"
@@ -844,7 +941,7 @@ onUnmounted(() => {
                     <div class="border-t border-secondary/10 dark:border-dark-border"></div>
                     <!-- Objetivo del artículo -->
                     <div>
-                      <label for="intent" class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-2.5">Modo de Contenido</label>
+                      <label for="intent" class="block text-sm font-bold text-text dark:text-dark-text mb-2.5">Modo de Contenido</label>
                       <select
                         id="intent"
                         v-model="searchIntent"
@@ -862,7 +959,7 @@ onUnmounted(() => {
 
                     <!-- Nivel de Lenguaje Técnico (Slider) -->
                     <div>
-                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
+                      <label class="block text-sm font-bold text-text dark:text-dark-text mb-4">
                         Lenguaje Técnico: 
                         <span class="text-primary ml-1">{{ getAudienceLabel(audienceValue) }}</span>
                       </label>
@@ -878,7 +975,7 @@ onUnmounted(() => {
 
                     <!-- Tone Slider -->
                     <div>
-                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
+                      <label class="block text-sm font-bold text-text dark:text-dark-text mb-4">
                         Tono: 
                         <span class="text-primary ml-1">
                           {{ getToneLabel(toneValue) }}
@@ -896,7 +993,7 @@ onUnmounted(() => {
 
                     <!-- Section Count Slider -->
                     <div>
-                      <label class="block text-[10px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-4">
+                      <label class="block text-sm font-bold text-text dark:text-dark-text mb-4">
                         Nº de Secciones: 
                         <span class="text-primary ml-1">{{ sectionCount }}</span>
                       </label>
@@ -944,6 +1041,32 @@ onUnmounted(() => {
         <div v-else-if="currentStep === 2" class="flex flex-col gap-8 pb-10 max-w-7xl mx-auto w-full" key="step2">
           <!-- MAIN AREA: OUTLINE -->
           <div class="space-y-6">
+            <!-- Blog Selection Card -->
+            <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
+              <div class="flex items-center gap-2 mb-1">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                  Destino de Publicación
+                </h2>
+              </div>
+              <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Selecciona el blog donde se publicará esta noticia para optimizar el enfoque.</p>
+              
+              <div class="relative group">
+                <select 
+                  v-model="selectedBlogId"
+                  class="block w-full rounded-xl border-0 py-3.5 pl-4 pr-10 text-text dark:text-dark-text bg-secondary/5 dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all appearance-none cursor-pointer hover:bg-secondary/10 dark:hover:bg-dark-surface"
+                >
+                  <option :value="null">Seleccionar blog de destino...</option>
+                  <option v-for="blog in BLOGS" :key="blog.id" :value="blog.id">
+                    {{ blog.name }} ({{ blog.url.replace('https://', '') }})
+                  </option>
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-secondary/40">
+                  <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" /></svg>
+                </div>
+              </div>
+            </div>
+
             <!-- Outline Card -->
             <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
               <div class="flex items-center justify-between mb-1">
@@ -1056,10 +1179,13 @@ onUnmounted(() => {
           <div class="flex flex-col gap-8">
             <!-- Leads / Ganchos Card -->
             <div class="w-full bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
-              <h2 class="text-sm font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-3 mb-6 flex items-center gap-2">
-                <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                Ganchos / Leads
-              </h2>
+              <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Ganchos / Leads
+                </h2>
+              </div>
+              <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Frases persuasivas para abrir la noticia y atraer al lector.</p>
               
               <div class="flex gap-2 mb-6">
                 <div class="relative flex-1 group ring-1 ring-inset ring-secondary/20 dark:ring-dark-border rounded-xl focus-within:ring-2 focus-within:ring-primary overflow-hidden shadow-sm bg-background dark:bg-dark-background transition-all">
@@ -1093,10 +1219,13 @@ onUnmounted(() => {
 
             <!-- Suggested Links Card -->
             <div class="w-full bg-slate-50/50 dark:bg-dark-surface/50 rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
-              <h2 class="text-sm font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-3 mb-6 flex items-center gap-2">
-                <svg class="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                Enlaces
-              </h2>
+              <div class="flex items-center justify-between mb-1">
+                <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
+                  <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  Enlaces
+                </h2>
+              </div>
+              <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Gestiona los enlaces a fuentes oficiales o artículos relacionados.</p>
               
               <ul class="space-y-4 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
                 <li v-for="link in suggestedLinks" :key="link.id" class="group flex items-start gap-2.5 bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 hover:border-primary/20 dark:hover:border-primary/30 transition-all">
@@ -1132,10 +1261,10 @@ onUnmounted(() => {
             </button>
             <button
               @click="handleGenerateArticle"
-              :disabled="generateLoading"
+              :disabled="generateLoading || isGeneratingArticle"
               class="group inline-flex items-center justify-center rounded-xl bg-primary px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-75 disabled:cursor-not-allowed"
             >
-              <div v-if="generateLoading" class="flex items-center gap-2">
+              <div v-if="generateLoading || isGeneratingArticle" class="flex items-center gap-2">
                 <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 Escribiendo artículo...
               </div>
@@ -1154,6 +1283,7 @@ onUnmounted(() => {
           v-model="generatedMarkdown"
           :title="blogTitle"
           :is-saving="isSavingArticle"
+          :is-saved="isArticleSaved"
           :metadata="articleMetadata"
           @save="saveArticleToDb"
           @back="goNext(2)"
@@ -1174,35 +1304,6 @@ onUnmounted(() => {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* Custom TOC Styles */
-:deep(details) {
-  @apply bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-xl my-6 overflow-hidden transition-all duration-300;
-}
-
-:deep(summary) {
-  @apply px-5 py-3 cursor-pointer font-bold text-text dark:text-dark-text bg-secondary/5 dark:bg-primary/10 hover:bg-secondary/10 dark:hover:bg-primary/20 transition-colors list-none flex items-center gap-2;
-}
-
-:deep(summary::-webkit-details-marker) {
-  display: none;
-}
-
-:deep(summary::before) {
-  content: "▸";
-}
-
-:deep(details[open] summary::before) {
-  content: "▾";
-}
-
-:deep(details > ul) {
-  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10 dark:border-dark-border;
-}
-
-:deep(details > ul li a) {
-  @apply text-primary hover:text-primary/80 no-underline transition-colors block text-sm font-medium;
 }
 
 /* Table Responsive Fix */

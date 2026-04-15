@@ -32,6 +32,9 @@ class Article
     #[ORM\Column]
     private ?\DateTimeImmutable $updatedAt = null;
 
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $blogId = null;
+
     public function getId(): ?string
     {
         return $this->id ? (string) $this->id : null;
@@ -96,5 +99,17 @@ class Article
     public function setUpdatedAtValue(): void
     {
         $this->updatedAt = new \DateTimeImmutable();
+    }
+
+    public function getBlogId(): ?int
+    {
+        return $this->blogId;
+    }
+
+    public function setBlogId(?int $blogId): static
+    {
+        $this->blogId = $blogId;
+
+        return $this;
     }
 }

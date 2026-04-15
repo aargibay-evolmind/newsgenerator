@@ -13,15 +13,17 @@ class GenerateOutlineService
      * @param string $title
      * @param array<string> $keyPoints
      * @param array<string> $keywords
-     * @param array<string> $urls
+     * @param array<array{url: string, title?: string, content?: string}> $exampleUrls
+     * @param array<array{url: string, title?: string, content?: string}> $authorityUrls
      * @param string $audience
      * @param string $searchIntent
      * @param string $additionalContext
      * @param array<string> $masterDLeads
      * @return array<string, mixed>
      */
-    public function generate(string $title, array $keyPoints, array $keywords, array $urls, string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7, ?string $contentMode = null, array $masterDLeads = []): array
+    public function generate(string $title, array $keyPoints, array $keywords, array $exampleUrls = [], array $authorityUrls = [], string $audience = 'General', string $searchIntent = 'Informativo', string $additionalContext = '', int $tone = 0, int $sectionCount = 7, ?string $contentMode = null, array $masterDLeads = []): array
     {
+        $startTime = microtime(true);
         // LOAD RELEVANT COURSES FOR CONTEXTUAL OUTLINE
         $relevantCourses = $this->knowledgeBase->getRelevantCourses($title . ' ' . implode(' ', $keywords) . ' ' . implode(' ', $keyPoints));
 
@@ -67,6 +69,26 @@ class GenerateOutlineService
             $prompt .= sprintf("**Ganchos/Leads de Apertura (Referencia):** %s. No incluyas encabezados para estos ganchos, se usarán solo para la introducción del artículo.\n", implode(', ', $masterDLeads));
         }
 
+        if (!empty($exampleUrls)) {
+            $prompt .= "\n### REFERENCIAS DE TONO Y ESTRUCTURA (EJEMPLOS):\n";
+            $prompt .= "Analiza el estilo, tono y organización de estos artículos de referencia para aplicarlos a nuestra nueva guía. No copies el contenido, solo emula su enfoque editorial:\n";
+            foreach ($exampleUrls as $ref) {
+                if (!empty($ref['content'])) {
+                    $prompt .= sprintf("- Fuente: %s\n- Contenido a analizar:\n%s\n\n", $ref['title'] ?? $ref['url'], mb_substr($ref['content'], 0, 1500));
+                }
+            }
+        }
+
+        if (!empty($authorityUrls)) {
+            $prompt .= "\n### FUENTES DE AUTORIDAD E INFORMACIÓN:\n";
+            $prompt .= "Utiliza la siguiente información como fuente verídica para los datos, requisitos y contexto legal/técnico del artículo:\n";
+            foreach ($authorityUrls as $ref) {
+                if (!empty($ref['content'])) {
+                    $prompt .= sprintf("- Fuente: %s\n- Datos clave:\n%s\n\n", $ref['title'] ?? $ref['url'], mb_substr($ref['content'], 0, 2000));
+                }
+            }
+        }
+
         $prompt .= "
 Requisitos del Esquema:
 1. Diseña un índice (outline) con exactamente {$sectionCount} encabezados muy descriptivos y orientados a la conversión. Devuélvelos en orden lógico.
@@ -74,9 +96,10 @@ Requisitos del Esquema:
 3. El esquema debe priorizar la empleabilidad en España 2026 (sueldos, demanda real, requisitos oficiales).
 4. **Obligatorio:** Incluye una sección final titulada 'Pasos para empezar tu formación' o similar, diseñada para cerrar con autoridad e invitar a la acción.
 5. Propón 3 enlaces de alta autoridad (Ministerios, SEPE, BOE o portales oficiales) relevantes para el tema.
-6. **Ganchos/Leads de Apertura:** Revisa los ganchos proporcionados por el usuario (si los hay) y opta por uno de estos enfoques:
-   - Si el usuario NO proporcionó ganchos: Genera 3-5 frases persuasivas y directas al estilo MasterD.
-   - Si el usuario SÍ proporcionó ganchos: Refínalos para que sean más impactantes o sugiere alternativas adicionales que sigan mejor el estilo MasterD, devolviendo siempre una lista final de 3-5 ganchos optimizados.
+6. **Ganchos/Leads de Apertura:** Revisa los ganchos proporcionados por el usuario (si los hay) y genera exactamente **2 ganchos** optimizados siguiendo esta estructura:
+   - **Gancho 1 (Hook):** Una frase o pregunta impactante diseñada para captar la atención inmediata del lector y despertar su curiosidad para seguir leyendo.
+   - **Gancho 2 (CTA):** Una frase orientada a la acción (Call to Action) persuasiva que anime al lector a tomar el siguiente paso (por ejemplo, buscar formación, informarse más o dar un giro a su carrera).
+   - Refina los ganchos proporcionados por el usuario o genera nuevos si es necesario para cumplir estrictamente con este esquema de 2 ganchos (Hook + CTA).
    - **IMPORTANTE:** No uses negrita (`**`) ni ningún otro formato Markdown en los ganchos.
    - No incluyas llamadas a la acción genéricas.
 
@@ -115,13 +138,13 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                 'masterDLeads' => [
                     'type' => 'ARRAY',
                     'items' => ['type' => 'STRING'],
-                    'description' => 'Lista de 1-2 ganchos persuasivos para la introducción.'
+                    'description' => 'Lista de exactamente 2 ganchos: el primero es un hook de lectura y el segundo es un CTA.'
                 ]
             ],
             'required' => ['outline', 'suggestedLinks', 'masterDLeads']
         ];
 
-        $models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+        $models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'];
         $result = $this->gemini->generateContent($prompt, $models, $schema);
 
         // Parse JSON output
@@ -173,6 +196,12 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                     'included' => true
                 ];
             }
+
+            $endTime = microtime(true);
+            $responseData['debug'] = [
+                'timeTakenSeconds' => round($endTime - $startTime, 2),
+                'textModelUsed' => $result['_usedModel'] ?? 'unknown'
+            ];
 
             return $responseData;
         }

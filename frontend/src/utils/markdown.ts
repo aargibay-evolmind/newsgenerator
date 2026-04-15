@@ -118,38 +118,7 @@ export function renderMarkdown(markdown: string | undefined | null, portable: bo
     }
   });
 
-  // 4d. Post-process the "ÍNDICE DE CONTENIDOS" into a collapsible block
-  const allElements = Array.from(cleanDom.querySelectorAll('*'));
-  const tocHeader = allElements.find(el => 
-    (el.tagName === 'H2' || el.tagName === 'H3') && 
-    (el.textContent?.toUpperCase().includes('ÍNDICE DE CONTENIDOS') || el.textContent?.toUpperCase().includes('TABLA DE CONTENIDOS'))
-  );
-
-  if (tocHeader) {
-    const details = document.createElement('details');
-    details.setAttribute('open', '');
-    details.className = 'toc-collapsible';
-    
-    const summary = document.createElement('summary');
-    summary.textContent = tocHeader.textContent || 'Índice de contenidos';
-    details.appendChild(summary);
-
-    // Collect next elements until another header is found
-    let next = tocHeader.nextElementSibling;
-    const toRemove = [tocHeader];
-    
-    while (next && !['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(next.tagName)) {
-      const current = next;
-      next = next.nextElementSibling;
-      details.appendChild(current.cloneNode(true));
-      toRemove.push(current);
-    }
-
-    tocHeader.parentNode?.insertBefore(details, tocHeader);
-    toRemove.forEach(el => el.remove());
-  }
-
-  // 4e. Ensure other details are open if needed
+  // 4d. Ensure other details are open if needed
   const existingDetails = cleanDom.querySelectorAll('details:not(.toc-collapsible)');
   existingDetails.forEach(d => {
     if (!d.hasAttribute('open')) d.setAttribute('open', '');
@@ -210,7 +179,17 @@ ${JSON.stringify(dataObject)}
   return bodyHtml + hydrationScript;
 }
 
+export function convertHtmlLinksToMarkdown(markdown: string): string {
+  if (!markdown) return '';
+  // Regex to match <a href="url">text</a>
+  // Handles single or double quotes, and works across multiple lines ([\s\S]*?)
+  return markdown.replace(/<a\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+}
+
 export function cleanMarkdown(text: string | undefined | null): string {
   if (!text) return '';
-  return text.replace(/^```(?:markdown|md)?\n?/i, '').replace(/\n?```$/i, '').trim();
+  // Convert any stray <a> tags to Markdown links first
+  const cleanedHtml = convertHtmlLinksToMarkdown(text);
+  // Then strip code blocks
+  return cleanedHtml.replace(/^```(?:markdown|md)?\n?/i, '').replace(/\n?```$/i, '').trim();
 }

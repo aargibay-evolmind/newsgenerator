@@ -11,6 +11,7 @@ const props = defineProps<{
   modelValue: string
   title: string
   isSaving: boolean
+  isSaved?: boolean
   savePrompt?: string
   backPrompt?: string
   hideBack?: boolean
@@ -106,9 +107,13 @@ function downloadArticle(format: 'markdown' | 'html') {
     </style>
 </head>
 <body>
+    <h1>${props.title}</h1>
     ${htmlContent}
 </body>
 </html>`
+  } else {
+    // Markdown format
+    content = `# ${props.title}\n\n${content}`
   }
   
   const blob = new Blob([content], { type: 'text/plain' })
@@ -127,16 +132,17 @@ function downloadArticle(format: 'markdown' | 'html') {
 
 
 function copyToClipboard() {
-  const content = renderMarkdown(generatedMarkdown.value, true)
+  const htmlContent = renderMarkdown(generatedMarkdown.value, true)
+  const fullContent = `<h1>${props.title}</h1>\n${htmlContent}`
   
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(content).then(() => {
+    navigator.clipboard.writeText(fullContent).then(() => {
       handleCopySuccess()
     }).catch(err => {
-      fallbackCopyTextToClipboard(content)
+      fallbackCopyTextToClipboard(fullContent)
     })
   } else {
-    fallbackCopyTextToClipboard(content)
+    fallbackCopyTextToClipboard(fullContent)
   }
 }
 
@@ -278,12 +284,17 @@ onUnmounted(() => {
         <div class="relative flex items-center gap-1.5">
           <button 
             @click="handleSave"
-            :disabled="isSaving"
-            class="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-primary border border-primary rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50 shadow-sm"
+            :disabled="isSaving || isSaved"
+            :class="[
+              'inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-sm border',
+              isSaved 
+                ? 'bg-slate-400 border-slate-400 text-white cursor-not-allowed' 
+                : 'bg-primary border-primary text-white hover:bg-primary/90 disabled:opacity-50'
+            ]"
           >
             <svg v-if="isSaving" class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-            {{ isSaving ? 'Guardando...' : (savePrompt || 'Guardar') }}
+            {{ isSaving ? 'Guardando...' : (isSaved ? 'Guardado' : (savePrompt || 'Guardar')) }}
           </button>
 
           <div class="relative">
@@ -364,6 +375,13 @@ onUnmounted(() => {
       <!-- MAIN CONTENT AREA -->
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden bg-background dark:bg-dark-background transition-colors">
         
+        <!-- Generated Article Title (H1) - Outside of editable Markdown -->
+        <div class="px-8 pt-8 pb-4 shrink-0 max-w-6xl mx-auto w-full border-b border-secondary/5 dark:border-dark-border/30 mb-2">
+          <h1 class="text-3xl sm:text-4xl font-extrabold text-text dark:text-dark-text leading-tight tracking-tight">
+            {{ title }}
+          </h1>
+        </div>
+
         <!-- Mode Switcher (Local to main content) -->
         <div class="h-9 px-4 bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border flex items-center justify-between shrink-0">
           <div class="flex p-0.5 bg-secondary/5 dark:bg-dark-surface rounded-md border border-secondary/10 dark:border-dark-border">
@@ -526,6 +544,31 @@ onUnmounted(() => {
 
           <div class="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar">
             
+            <!-- Generales Section -->
+            <div class="space-y-4">
+              <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Generales</h4>
+              
+              <div class="flex flex-col gap-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Título del Artículo</label>
+                  <button @click="copyField(title, 'main-title')" class="text-[9px] font-bold text-primary hover:underline">
+                    {{ copiedField === 'main-title' ? '¡Hecho!' : 'Copiar' }}
+                  </button>
+                </div>
+                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] font-bold text-text dark:text-dark-text transition-colors">{{ title }}</div>
+              </div>
+
+              <div v-if="metadata.leads" class="flex flex-col gap-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Ganchos / Leads</label>
+                  <button @click="copyField(metadata.leads, 'leads-main')" class="text-[9px] font-bold text-primary hover:underline">
+                    {{ copiedField === 'leads-main' ? '¡Hecho!' : 'Copiar' }}
+                  </button>
+                </div>
+                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed whitespace-pre-wrap transition-colors max-h-32 overflow-y-auto custom-scrollbar">{{ metadata.leads }}</div>
+              </div>
+            </div>
+
             <!-- SEO Section -->
             <div class="space-y-4">
               <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">SEO</h4>
@@ -571,17 +614,17 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- Leads Section -->
+            <!-- Leads Section (Individually copyable) -->
             <div class="space-y-4" v-if="metadata.leads">
               <div class="flex items-center justify-between border-b border-secondary/10 dark:border-dark-border pb-2">
-                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Ganchos / Leads</h4>
+                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Ganchos (Individuales)</h4>
                 <button 
                   @click="copyField(metadata.leads, 'leads-all')" 
                   class="text-[9px] font-bold text-primary hover:underline transition-all flex items-center gap-1"
                 >
                   <svg v-if="copiedField !== 'leads-all'" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
                   <svg v-else class="h-2.5 w-2.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
-                  {{ copiedField === 'leads-all' ? '¡Todos copiados!' : 'Copiar Todos' }}
+                  {{ copiedField === 'leads-all' ? '¡Copiados!' : 'Copiar Todos' }}
                 </button>
               </div>
               <div class="space-y-3 pl-1">
@@ -603,6 +646,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+
 
             <!-- Newsletter Section -->
             <div class="space-y-4">
@@ -637,36 +681,6 @@ onUnmounted(() => {
 
 <style scoped>
 @reference "../../../assets/main.css";
-
-/* Custom TOC Styles */
-:deep(details) {
-  @apply bg-background dark:bg-dark-surface border border-secondary/20 dark:border-dark-border rounded-xl my-6 overflow-hidden transition-all duration-300 shadow-sm;
-}
-
-:deep(summary) {
-  @apply px-5 py-3 cursor-pointer font-bold text-text dark:text-dark-text bg-secondary/5 dark:bg-dark-background/50 hover:bg-secondary/10 dark:hover:bg-dark-background transition-colors list-none flex items-center gap-2;
-}
-
-:deep(summary::-webkit-details-marker) {
-  display: none;
-}
-
-:deep(summary::before) {
-  content: "▸";
-  @apply text-primary/60 dark:text-primary/40;
-}
-
-:deep(details[open] summary::before) {
-  content: "▾";
-}
-
-:deep(details > ul) {
-  @apply px-8 py-4 space-y-2 !mt-0 border-t border-secondary/10 dark:border-dark-border;
-}
-
-:deep(details > ul li a) {
-  @apply text-primary dark:text-primary/90 hover:text-primary/80 dark:hover:text-white no-underline transition-colors block text-sm font-medium;
-}
 
 /* Table Responsive Fix */
 :deep(.prose table) {

@@ -218,7 +218,7 @@ async function main() {
       thinkingConfig: {
         includeThoughts: true, // If you want to see the thoughts
         // 'HIGH' is default.
-        thinkingLevel: 'LOW', // Use 'LOW' for faster/cheaper reasoning
+        thinkingLevel: 'HIGH', // Use 'LOW' for faster/cheaper reasoning
       },
     },
   });

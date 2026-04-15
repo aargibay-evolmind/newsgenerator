@@ -17,10 +17,11 @@ class GeminiService
      * @param string|array<string> $model Candidates for generation, from primary to fallback.
      * @return array<string, mixed>
      */
-    public function generateContent(string $prompt, string|array $model = 'gemini-2.5-flash', ?array $schema = null): array
+    public function generateContent(string $prompt, string|array $model = 'gemini-3-flash-preview', ?array $schema = null): array
     {
         $models = is_array($model) ? $model : [$model];
         $lastException = null;
+        $logFile = __DIR__ . '/../../var/log/gemini.log';
 
         foreach ($models as $candidate) {
             $retries = 0;
@@ -28,9 +29,14 @@ class GeminiService
             
             while ($retries <= $maxRetries) {
                 try {
-                    return $this->attemptGeneration($prompt, $candidate, $schema);
+                    $response = $this->attemptGeneration($prompt, $candidate, $schema);
+                    $response['_usedModel'] = $candidate;
+                    return $response;
                 } catch (\Exception $e) {
-                    $lastException = $e;
+                    $errorMsg = sprintf("[%s] %s", $candidate, $e->getMessage());
+                    file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] Gemini ERROR: $errorMsg\n", FILE_APPEND);
+                    $lastException = new \Exception($errorMsg, $e->getCode(), $e);
+                    
                     $isRateLimit = str_contains($e->getMessage(), '429');
                     $isServerError = str_contains($e->getMessage(), '500') || str_contains($e->getMessage(), '503');
                     

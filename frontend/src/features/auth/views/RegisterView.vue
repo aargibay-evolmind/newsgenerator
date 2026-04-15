@@ -126,13 +126,13 @@ function handleRegister() {
               <p class="text-[10px] font-black text-secondary/40 dark:text-dark-text/20 uppercase tracking-[0.2em] mb-4">
                 ¿Ya tienes una cuenta?
               </p>
-              <router-link 
+              <!-- <router-link 
                 to="/login" 
                 class="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-primary/20 dark:border-primary/40 text-primary font-bold text-xs hover:bg-primary/5 transition-all group"
               >
                 <LogIn class="w-4 h-4" />
                 Iniciar sesión
-              </router-link>
+              </router-link> -->
             </div>
           </div>
           

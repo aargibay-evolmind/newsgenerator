@@ -27,7 +27,8 @@ class GenerateOutlineAction
         $title = $payload['title'] ?? '';
         $keywords = $payload['keywords'] ?? [];
         $keyPoints = $payload['keyPoints'] ?? [];
-        $urls = $payload['referenceUrls'] ?? [];
+        $exampleUrls = $payload['exampleUrls'] ?? [];
+        $authorityUrls = $payload['authorityUrls'] ?? [];
         $audience = $payload['audience'] ?? 'General';
         $searchIntent = $payload['searchIntent'] ?? 'Informativo';
         $additionalContext = $payload['additionalContext'] ?? '';
@@ -41,10 +42,10 @@ class GenerateOutlineAction
         }
 
         try {
-            $data = $this->domainService->generate($title, $keyPoints, $keywords, $urls, $audience, $searchIntent, $additionalContext, $tone, $sectionCount, $contentMode, $masterDLeads);
+            $data = $this->domainService->generate($title, $keyPoints, $keywords, $exampleUrls, $authorityUrls, $audience, $searchIntent, $additionalContext, $tone, $sectionCount, $contentMode, $masterDLeads);
             return $this->responder->respond($data);
         } catch (\Exception $e) {
-            return $this->responder->respondError($e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), 500);
+            return $this->responder->respondError($e->getMessage(), 500);
         }
     }
 }
