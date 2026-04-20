@@ -11,7 +11,9 @@ import type {
   RegenerateSectionRequest,
   RegenerateSectionResponse,
   SaveArticleRequest,
-  SavedArticle
+  SavedArticle,
+  CompareArticleRequest,
+  CompareArticleResponse
 } from '../types';
 
 export const ArticleAPI = {
@@ -75,5 +77,11 @@ export const ArticleAPI = {
   syncKnowledgeBase: () =>
     apiClient<{ total: number; synced: number }>('/knowledge-base/sync', {
       method: 'POST'
+    }),
+
+  compareArticle: (data: CompareArticleRequest) =>
+    apiClient<CompareArticleResponse>('/articles/compare', {
+      method: 'POST',
+      body: JSON.stringify(data)
     })
 };

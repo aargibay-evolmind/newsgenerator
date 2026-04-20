@@ -23,7 +23,8 @@ class GetArticlesService
                 updated_at,
                 JSON_EXTRACT(data, '$.readingTime') as readingTime,
                 JSON_EXTRACT(data, '$.tone') as tone,
-                JSON_EXTRACT(data, '$.keywords') as keywords
+                JSON_EXTRACT(data, '$.keywords') as keywords,
+                blog_id
             FROM article
         ";
         
@@ -46,6 +47,7 @@ class GetArticlesService
                 'id' => $row['id'],
                 'title' => $row['title'],
                 'user_id' => $row['user_id'],
+                'blog_id' => $row['blog_id'] ? (int) $row['blog_id'] : null,
                 'data' => [
                     'readingTime' => $row['readingTime'] ? json_decode($row['readingTime']) : 0,
                     'tone' => $row['tone'] ? json_decode($row['tone']) : null,

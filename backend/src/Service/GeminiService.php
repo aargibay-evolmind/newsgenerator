@@ -211,6 +211,64 @@ class GeminiService
             throw new \Exception(sprintf('%s | Server Response Body: %s', $e->getMessage(), $errorBody), 0, $e);
         }
     }
+    /**
+     * @param string $ourText
+     * @param string $competitorText
+     * @return array<string, mixed>
+     */
+    public function generateComparison(string $ourText, string $competitorText): array
+    {
+        $prompt = sprintf(
+            "Eres un experto analista SEO. Evalúa nuestro artículo generado frente al artículo de la competencia provisto.
+            Retorna las estimaciones de SEO para cada lado (conteo aproximado de palabras y 3-5 palabras clave principales que atacan).
+            Finalmente, propón 3 recomendaciones clave expresadas en texto corto y claro para mejorar de inmediato nuestro texto frente a esta competencia.
+            
+            [Nuestro Artículo]
+            %s
+            
+            [Artículo Competencia]
+            %s",
+            $ourText,
+            $competitorText
+        );
+
+        $schema = [
+            'type' => 'OBJECT',
+            'properties' => [
+                'competitor_analysis' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'word_count_est' => ['type' => 'INTEGER'],
+                        'main_keywords' => [
+                            'type' => 'ARRAY',
+                            'items' => ['type' => 'STRING']
+                        ]
+                    ],
+                    'required' => ['word_count_est', 'main_keywords']
+                ],
+                'our_analysis' => [
+                    'type' => 'OBJECT',
+                    'properties' => [
+                        'word_count_est' => ['type' => 'INTEGER'],
+                        'main_keywords' => [
+                            'type' => 'ARRAY',
+                            'items' => ['type' => 'STRING']
+                        ]
+                    ],
+                    'required' => ['word_count_est', 'main_keywords']
+                ],
+                'suggestions' => [
+                    'type' => 'ARRAY',
+                    'items' => ['type' => 'STRING']
+                ]
+            ],
+            'required' => ['competitor_analysis', 'our_analysis', 'suggestions']
+        ];
+
+        $models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'];
+        $response = $this->generateContent($prompt, $models, $schema);
+
+        $jsonText = $response['candidates'][0]['content']['parts'][0]['text'] ?? '{}';
+        return json_decode($jsonText, true) ?? [];
+    }
 }
-
-

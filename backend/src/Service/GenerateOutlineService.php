@@ -90,7 +90,7 @@ class GenerateOutlineService
         }
 
         $prompt .= "
-Requisitos del Esquema:
+    Requisitos del Esquema:
 1. Diseña un índice (outline) con exactamente {$sectionCount} encabezados muy descriptivos y orientados a la conversión. Devuélvelos en orden lógico.
 2. **NUNCA incluyas** encabezados para la 'Tabla de contenidos', 'Introducción' o 'Resumen AEO', ya que el sistema los inyecta automáticamente.
 3. El esquema debe priorizar la empleabilidad en España 2026 (sueldos, demanda real, requisitos oficiales).
@@ -111,6 +111,11 @@ Considera incluir secciones que faciliten la integración natural de estos curso
         }
         $prompt .= "\n";
 
+        // Adicionar instrucción sobre influencia de competencia
+        if (!empty($exampleUrls)) {
+            $prompt .= "10. Marca el campo `influenced_by_competitor` a verdadero (true) ÚNICAMENTE para aquellos encabezados que hayan sido inspirados o basados directamente en la estructura y contenido de los enlaces de REFERENCIAS DE TONO Y ESTRUCTURA (EJEMPLOS) proporcionados.\n";
+        }
+
         $schema = [
             'type' => 'OBJECT', // TYPE_OBJECT from the specification
             'properties' => [
@@ -119,7 +124,8 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                     'items' => [
                         'type' => 'OBJECT',
                         'properties' => [
-                            'text' => ['type' => 'STRING', 'description' => 'El título del encabezado.']
+                            'text' => ['type' => 'STRING', 'description' => 'El título del encabezado.'],
+                            'influenced_by_competitor' => ['type' => 'BOOLEAN', 'description' => 'True si este encabezado fue inspirado o basado directamente en la estructura de alguna URL de competencia proporcionada en los ejemplos.']
                         ]
                     ],
                     'description' => 'Lista de los encabezados del artículo.'
@@ -144,7 +150,7 @@ Considera incluir secciones que faciliten la integración natural de estos curso
             'required' => ['outline', 'suggestedLinks', 'masterDLeads']
         ];
 
-        $models = ['gemini-3.1-pro-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'];
+        $models = ['gemini-3.1-flash-lite-preview', 'gemini-2.5-flash-lite', 'gemini-2.0-flash-lite-preview', 'gemini-2.5-flash', 'gemini-3.1-pro-preview'];
         $result = $this->gemini->generateContent($prompt, $models, $schema);
 
         // Parse JSON output
@@ -167,7 +173,8 @@ Considera incluir secciones que faciliten la integración natural de estos curso
                         'text' => $item['text'] ?? 'Nuevo Encabezado',
                         'included' => true,
                         'infographic' => false,
-                        'budget' => 'medium'
+                        'budget' => 'medium',
+                        'influenced_by_competitor' => $item['influenced_by_competitor'] ?? false
                     ];
                 }
             }

@@ -16,6 +16,7 @@ const props = defineProps<{
   backPrompt?: string
   hideBack?: boolean
   metadata?: ArticleMetadata
+  competitorUrl?: string
 }>()
 
 const emit = defineEmits<{
@@ -50,7 +51,7 @@ const showDownloadDropdown = ref(false)
 const markdownEditor = ref<HTMLTextAreaElement | null>(null)
 
 const showMetadataSidebar = ref(true)
-const showMetadata = ref(false) // Keeping this for backward compatibility if needed, but sidebar is primary
+
 const copiedField = ref<string | null>(null)
 
 function copyField(text: string, fieldName: string) {
@@ -339,7 +340,7 @@ onUnmounted(() => {
           @click="showMetadataSidebar = !showMetadataSidebar"
           :class="[
             'flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200',
-            showMetadataSidebar 
+            showMetadataSidebar
               ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' 
               : 'bg-secondary/5 border-secondary/10 text-secondary hover:bg-secondary/10 dark:text-dark-text/60'
           ]"
@@ -524,10 +525,12 @@ onUnmounted(() => {
         leave-from-class="translate-x-0"
         leave-to-class="translate-x-full"
       >
-        <aside 
-          v-if="showMetadataSidebar && metadata" 
-          class="w-80 h-full bg-slate-50 dark:bg-dark-surface border-l border-secondary/10 dark:border-dark-border flex flex-col shrink-0 z-10 shadow-2xl overflow-hidden transition-colors"
-        >
+        <div v-show="showMetadataSidebar" class="w-80 h-full shrink-0 z-10 shadow-2xl relative bg-slate-50 dark:bg-dark-surface border-l border-secondary/10 dark:border-dark-border">
+          
+          <aside 
+            v-if="metadata" 
+            class="absolute inset-0 flex flex-col overflow-hidden transition-colors"
+          >
           <div class="p-4 border-b border-secondary/10 dark:border-dark-border flex items-center justify-between bg-background dark:bg-dark-background shrink-0">
             <div class="flex items-center gap-2">
               <div class="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
@@ -673,7 +676,9 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
-        </aside>
+          </aside>
+
+        </div>
       </transition>
     </div>
   </div>

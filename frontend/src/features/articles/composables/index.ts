@@ -9,3 +9,4 @@ export * from './useSavedArticle';
 export * from './useUpdateArticle';
 export * from './useDeleteArticle';
 export * from './useSyncKnowledgeBase';
+export * from './useAnalyzeCompetitor';

@@ -14,7 +14,7 @@ class UrlScraperService
      * @param string $url
      * @return array<string, string>
      */
-    public function scrape(string $url): array
+    public function scrape(string $url, int $limit = 5000): array
     {
         try {
             $response = $this->httpClient->request('GET', $url, [
@@ -33,13 +33,13 @@ class UrlScraperService
 
             // Extract content: Remove script, style, and nav tags
             $content = preg_replace('/<(script|style|nav|footer|header|aside).*?<\/ \1>/ims', '', $html);
-            $content = strip_tags($content);
+            $content = strip_tags($content, '<h1><h2><h3><h4><p><ul><ol><li><strong><em>');
             $content = html_entity_decode($content);
             $content = preg_replace('/\s+/', ' ', $content);
             $content = trim($content);
 
             // Limit content length to avoid hitting token limits early
-            $content = mb_substr($content, 0, 5000);
+            $content = mb_substr($content, 0, $limit);
 
             return [
                 'url' => $url,

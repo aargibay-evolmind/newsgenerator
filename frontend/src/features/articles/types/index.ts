@@ -48,6 +48,7 @@ export interface OutlineItem {
   included: boolean;
   infographic?: boolean;
   budget?: 'short' | 'medium' | 'long';
+  influenced_by_competitor?: boolean;
 }
 
 export interface ReferenceLink {
@@ -131,4 +132,20 @@ export interface SavedArticle {
   user_id?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AnalyzeCompetitorRequest {
+  competitorUrl: string;
+  includeMarkdown?: boolean;
+}
+
+export interface AnalyzeCompetitorResponse {
+  totalLength: number;
+  markdown: string;
+  keywords: string[];
+  headers: {
+    text: string;
+    length: number;
+  }[];
+  competitor_url?: string;
 }
