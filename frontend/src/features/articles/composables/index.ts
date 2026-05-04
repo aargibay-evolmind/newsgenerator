@@ -10,3 +10,4 @@ export * from './useUpdateArticle';
 export * from './useDeleteArticle';
 export * from './useSyncKnowledgeBase';
 export * from './useAnalyzeCompetitor';
+export * from './useSuggestHeading';

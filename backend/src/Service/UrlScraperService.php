@@ -31,11 +31,33 @@ class UrlScraperService
                 $title = trim(strip_tags($matches[1]));
             }
 
-            // Extract content: Remove script, style, and nav tags
-            $content = preg_replace('/<(script|style|nav|footer|header|aside).*?<\/ \1>/ims', '', $html);
-            $content = strip_tags($content, '<h1><h2><h3><h4><p><ul><ol><li><strong><em>');
-            $content = html_entity_decode($content);
-            $content = preg_replace('/\s+/', ' ', $content);
+            // Use DOMDocument for reliable parsing
+            $dom = new \DOMDocument();
+            @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_NOERROR);
+
+            // Remove noisy elements: scripts, styles, nav, header, footer, aside
+            $tagsToRemove = ['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript', 'form', 'button'];
+            foreach ($tagsToRemove as $tag) {
+                foreach (iterator_to_array($dom->getElementsByTagName($tag)) as $node) {
+                    $node->parentNode?->removeChild($node);
+                }
+            }
+
+            // Extract structured content: headings and paragraphs with newlines
+            $lines = [];
+            $contentTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'p', 'li'];
+            foreach ($contentTags as $tag) {
+                foreach ($dom->getElementsByTagName($tag) as $node) {
+                    $text = trim($node->textContent);
+                    if (strlen($text) > 10) { // filter out tiny noise snippets
+                        $prefix = in_array($tag, ['h1','h2','h3','h4','h5']) ? strtoupper($tag) . ': ' : '';
+                        $lines[] = $prefix . $text;
+                    }
+                }
+            }
+
+            $content = implode("\n", $lines);
+            $content = preg_replace('/\n{3,}/', "\n\n", $content);
             $content = trim($content);
 
             // Limit content length to avoid hitting token limits early

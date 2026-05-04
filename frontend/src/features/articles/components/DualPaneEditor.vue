@@ -3,6 +3,8 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { renderMarkdown, cleanMarkdown, revokeMarkdownBlobs } from '@/utils/markdown'
 import { marked } from 'marked'
 import MarkdownEditor from './MarkdownEditor.vue'
+import ComparatorSidebar from './ComparatorSidebar.vue'
+import CompetitorPane from './CompetitorPane.vue'
 import { useRegenerateSection } from '../composables'
 
 import type { ArticleMetadata } from '../types'
@@ -17,6 +19,7 @@ const props = defineProps<{
   hideBack?: boolean
   metadata?: ArticleMetadata
   competitorUrl?: string
+  competitorMarkdown?: string
 }>()
 
 const emit = defineEmits<{
@@ -35,7 +38,7 @@ const { mutateAsync: regenerateSection } = useRegenerateSection()
 const errorMessage = ref<string | null>(null)
 
 // View & Editor state
-const viewMode = ref<'markdown' | 'visual' | 'html'>('visual')
+const viewMode = ref<'markdown' | 'visual' | 'html' | 'compare'>('visual')
 const isCopied = ref(false)
 
 // Regeneration State
@@ -51,6 +54,7 @@ const showDownloadDropdown = ref(false)
 const markdownEditor = ref<HTMLTextAreaElement | null>(null)
 
 const showMetadataSidebar = ref(true)
+const activeSidebarTab = ref<'metadata' | 'comparator'>('metadata')
 
 const copiedField = ref<string | null>(null)
 
@@ -242,6 +246,11 @@ onMounted(() => {
     document.documentElement.style.overflow = 'hidden';
     document.documentElement.style.height = '100%';
   }
+  
+  // Default to comparator if we have a URL
+  if (props.competitorUrl) {
+    activeSidebarTab.value = 'comparator'
+  }
 })
 
 onUnmounted(() => {
@@ -335,21 +344,68 @@ onUnmounted(() => {
       </div>
 
       <div class="flex items-center gap-3">
-        <!-- Metadata Toggle -->
-        <button 
-          @click="showMetadataSidebar = !showMetadataSidebar"
-          :class="[
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200',
-            showMetadataSidebar
-              ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' 
-              : 'bg-secondary/5 border-secondary/10 text-secondary hover:bg-secondary/10 dark:text-dark-text/60'
-          ]"
-        >
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span class="text-[10px] font-black uppercase tracking-wider">Metadatos</span>
-        </button>
+        <!-- Sidebar Toggles -->
+        <div class="flex p-0.5 bg-secondary/5 dark:bg-dark-surface rounded-lg border border-secondary/10 dark:border-dark-border">
+          <!-- Metadata Toggle -->
+          <button 
+            @click="activeSidebarTab = 'metadata'; showMetadataSidebar = true"
+            :class="[
+              'flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded transition-all duration-200',
+              showMetadataSidebar && activeSidebarTab === 'metadata'
+                ? 'bg-primary text-white shadow-sm' 
+                : 'text-secondary/60 dark:text-dark-text/40 hover:text-primary'
+            ]"
+          >
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Metadatos
+          </button>
+
+          <!-- Comparator Toggle (Only if competitorUrl exists) -->
+          <button 
+            v-if="competitorUrl"
+            @click="activeSidebarTab = 'comparator'; showMetadataSidebar = true"
+            :class="[
+              'flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded transition-all duration-200',
+              showMetadataSidebar && activeSidebarTab === 'comparator'
+                ? 'bg-orange-500 text-white shadow-sm' 
+                : 'text-secondary/60 dark:text-dark-text/40 hover:text-orange-500'
+            ]"
+          >
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Análisis
+          </button>
+
+          <!-- Side-by-Side (Vista Dual) Toggle -->
+          <button 
+            v-if="competitorUrl"
+            @click="viewMode = viewMode === 'compare' ? 'visual' : 'compare'; if(viewMode === 'compare') showMetadataSidebar = false"
+            :class="[
+              'flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded transition-all duration-200 border border-transparent',
+              viewMode === 'compare'
+                ? 'bg-primary text-white border-primary shadow-sm' 
+                : 'text-primary bg-primary/5 hover:bg-primary/10 border-primary/20'
+            ]"
+          >
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+            </svg>
+            Vista Dual
+          </button>
+          
+          <!-- Close toggle button -->
+          <button 
+            v-if="showMetadataSidebar"
+            @click="showMetadataSidebar = false"
+            class="px-1.5 text-secondary/40 hover:text-red-500 transition-colors"
+            title="Cerrar barra lateral"
+          >
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
 
         <!-- Copy HTML Button (Always Visible) -->
         <button 
@@ -377,8 +433,8 @@ onUnmounted(() => {
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden bg-background dark:bg-dark-background transition-colors">
         
         <!-- Generated Article Title (H1) - Outside of editable Markdown -->
-        <div class="px-8 pt-8 pb-4 shrink-0 max-w-6xl mx-auto w-full border-b border-secondary/5 dark:border-dark-border/30 mb-2">
-          <h1 class="text-3xl sm:text-4xl font-extrabold text-text dark:text-dark-text leading-tight tracking-tight">
+        <div class="px-6 pt-4 pb-3 shrink-0 max-w-6xl mx-auto w-full border-b border-secondary/5 dark:border-dark-border/30 mb-1">
+          <h1 class="text-xl sm:text-2xl font-bold text-text dark:text-dark-text leading-tight">
             {{ title }}
           </h1>
         </div>
@@ -387,8 +443,9 @@ onUnmounted(() => {
         <div class="h-9 px-4 bg-background dark:bg-dark-background border-b border-secondary/10 dark:border-dark-border flex items-center justify-between shrink-0">
           <div class="flex p-0.5 bg-secondary/5 dark:bg-dark-surface rounded-md border border-secondary/10 dark:border-dark-border">
             <button 
-              v-for="mode in ['visual', 'markdown', 'html']" 
+              v-for="mode in ['visual', 'markdown', 'html', 'compare']" 
               :key="mode"
+              v-show="mode !== 'compare' || competitorUrl"
               @click="viewMode = mode as any"
               :class="[
                 'px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded transition-all duration-200 whitespace-nowrap',
@@ -397,11 +454,11 @@ onUnmounted(() => {
                   : 'text-secondary/60 dark:text-dark-text/40 hover:text-primary'
               ]"
             >
-              {{ mode === 'visual' ? 'Editor' : mode === 'markdown' ? 'Markdown' : 'HTML' }}
+              {{ mode === 'visual' ? 'Editor' : mode === 'markdown' ? 'Markdown' : mode === 'html' ? 'HTML' : 'Comparar' }}
             </button>
           </div>
           <span class="text-[9px] font-mono text-secondary/40 dark:text-dark-text/30">
-            {{ viewMode === 'visual' ? 'Editor Visual (AI)' : viewMode === 'markdown' ? 'Editor Markdown Raw' : 'Código HTML' }}
+            {{ viewMode === 'visual' ? 'Editor Visual (AI)' : viewMode === 'markdown' ? 'Editor Markdown Raw' : viewMode === 'html' ? 'Código HTML' : 'Vista Comparativa (Lado a Lado)' }}
           </span>
         </div>
 
@@ -490,6 +547,23 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- COMPARE MODE (Side-by-Side) -->
+        <div v-else-if="viewMode === 'compare' && !isReviewingRegen" class="flex-1 flex overflow-hidden divide-x divide-secondary/10 dark:divide-dark-border transition-colors">
+          <!-- Left: Our Editor -->
+          <div class="flex-1 flex flex-col min-w-0 bg-background dark:bg-dark-background">
+            <div class="h-8 px-4 border-b border-secondary/5 dark:border-dark-border/30 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-dark-surface/50">
+              <span class="text-[9px] font-bold text-primary uppercase tracking-widest">Nuestro Artículo</span>
+            </div>
+            <div class="flex-1 min-h-0">
+               <MarkdownEditor v-model="generatedMarkdown" />
+            </div>
+          </div>
+          <!-- Right: Competitor Article -->
+          <div class="flex-1 flex flex-col min-w-0 bg-slate-50 dark:bg-dark-surface">
+            <CompetitorPane :markdown="competitorMarkdown || ''" :url="competitorUrl || ''" />
+          </div>
+        </div>
+
         <!-- DIFF REVIEW OVERLAY (Full PANE) -->
         <div v-if="isReviewingRegen" class="flex-1 overflow-hidden flex flex-col bg-background dark:bg-dark-background">
           <div class="px-6 py-4 border-b border-secondary/10 dark:border-dark-border flex items-center justify-between bg-background dark:bg-dark-background shadow-sm z-10 transition-colors">
@@ -527,155 +601,164 @@ onUnmounted(() => {
       >
         <div v-show="showMetadataSidebar" class="w-80 h-full shrink-0 z-10 shadow-2xl relative bg-slate-50 dark:bg-dark-surface border-l border-secondary/10 dark:border-dark-border">
           
+          <!-- METADATA TAB -->
           <aside 
-            v-if="metadata" 
+            v-if="metadata && activeSidebarTab === 'metadata'" 
             class="absolute inset-0 flex flex-col overflow-hidden transition-colors"
           >
-          <div class="p-4 border-b border-secondary/10 dark:border-dark-border flex items-center justify-between bg-background dark:bg-dark-background shrink-0">
-            <div class="flex items-center gap-2">
-              <div class="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
+            <div class="p-4 border-b border-secondary/10 dark:border-dark-border flex items-center justify-between bg-background dark:bg-dark-background shrink-0">
+              <div class="flex items-center gap-2">
+                <div class="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 class="text-xs font-black text-text dark:text-dark-text uppercase tracking-widest">Metadatos</h3>
               </div>
-              <h3 class="text-xs font-black text-text dark:text-dark-text uppercase tracking-widest">Metadatos</h3>
+              <button @click="showMetadataSidebar = false" class="p-1 rounded-full hover:bg-secondary/10 transition-colors text-secondary dark:text-dark-text/40">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
-            <button @click="showMetadataSidebar = false" class="p-1 rounded-full hover:bg-secondary/10 transition-colors text-secondary dark:text-dark-text/40">
-              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
 
-          <div class="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar">
-            
-            <!-- Generales Section -->
-            <div class="space-y-4">
-              <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Generales</h4>
+            <div class="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar">
               
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Título del Artículo</label>
-                  <button @click="copyField(title, 'main-title')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'main-title' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
+              <!-- Generales Section -->
+              <div class="space-y-4">
+                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Generales</h4>
+                
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Título del Artículo</label>
+                    <button @click="copyField(title, 'main-title')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'main-title' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] font-bold text-text dark:text-dark-text transition-colors">{{ title }}</div>
                 </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] font-bold text-text dark:text-dark-text transition-colors">{{ title }}</div>
+
+                <div v-if="metadata.leads" class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Ganchos / Leads</label>
+                    <button @click="copyField(metadata.leads, 'leads-main')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'leads-main' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed whitespace-pre-wrap transition-colors max-h-32 overflow-y-auto custom-scrollbar">{{ metadata.leads }}</div>
+                </div>
               </div>
 
-              <div v-if="metadata.leads" class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Ganchos / Leads</label>
-                  <button @click="copyField(metadata.leads, 'leads-main')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'leads-main' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
+              <!-- SEO Section -->
+              <div class="space-y-4">
+                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">SEO</h4>
+                
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Friendly URL</label>
+                    <button @click="copyField(metadata.friendlyUrl, 'url')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'url' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] font-mono text-text dark:text-dark-text break-all transition-colors">{{ metadata.friendlyUrl }}</div>
                 </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed whitespace-pre-wrap transition-colors max-h-32 overflow-y-auto custom-scrollbar">{{ metadata.leads }}</div>
-              </div>
-            </div>
 
-            <!-- SEO Section -->
-            <div class="space-y-4">
-              <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">SEO</h4>
-              
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Friendly URL</label>
-                  <button @click="copyField(metadata.friendlyUrl, 'url')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'url' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Meta Title ({{ metadata.metaTitle?.length || 0 }})</label>
+                    <button @click="copyField(metadata.metaTitle, 'title')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'title' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed italic transition-colors">{{ metadata.metaTitle }}</div>
                 </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] font-mono text-text dark:text-dark-text break-all transition-colors">{{ metadata.friendlyUrl }}</div>
-              </div>
 
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Meta Title ({{ metadata.metaTitle?.length || 0 }})</label>
-                  <button @click="copyField(metadata.metaTitle, 'title')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'title' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Keywords</label>
+                    <button @click="copyField(metadata.metaKeywords, 'keywords')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'keywords' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.metaKeywords }}</div>
                 </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed italic transition-colors">{{ metadata.metaTitle }}</div>
-              </div>
 
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Keywords</label>
-                  <button @click="copyField(metadata.metaKeywords, 'keywords')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'keywords' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Description ({{ metadata.metaDescription?.length || 0 }})</label>
+                    <button @click="copyField(metadata.metaDescription, 'desc')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'desc' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed italic transition-colors">{{ metadata.metaDescription }}</div>
                 </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed transition-colors">{{ metadata.metaKeywords }}</div>
               </div>
 
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-secondary dark:text-dark-text/50 uppercase tracking-wider">Description ({{ metadata.metaDescription?.length || 0 }})</label>
-                  <button @click="copyField(metadata.metaDescription, 'desc')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'desc' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
-                </div>
-                <div class="px-2.5 py-2 bg-background dark:bg-dark-background border border-secondary/10 dark:border-dark-border rounded-lg text-[10px] text-text dark:text-dark-text leading-relaxed italic transition-colors">{{ metadata.metaDescription }}</div>
-              </div>
-            </div>
-
-            <!-- Leads Section (Individually copyable) -->
-            <div class="space-y-4" v-if="metadata.leads">
-              <div class="flex items-center justify-between border-b border-secondary/10 dark:border-dark-border pb-2">
-                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Ganchos (Individuales)</h4>
-                <button 
-                  @click="copyField(metadata.leads, 'leads-all')" 
-                  class="text-[9px] font-bold text-primary hover:underline transition-all flex items-center gap-1"
-                >
-                  <svg v-if="copiedField !== 'leads-all'" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                  <svg v-else class="h-2.5 w-2.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
-                  {{ copiedField === 'leads-all' ? '¡Copiados!' : 'Copiar Todos' }}
-                </button>
-              </div>
-              <div class="space-y-3 pl-1">
-                <div 
-                  v-for="(lead, idx) in metadata.leads.split(/\n\n+|(?<=\.)\s+(?=[¿¡A-Z])|(?<=\?)\s+(?=[¿¡A-Z])|(?<=!)\s+(?=[¿¡A-Z])/).filter(l => l.trim().length > 0)" 
-                  :key="idx" 
-                  class="group/lead relative flex gap-3 text-[11px] text-text dark:text-dark-text leading-relaxed p-2 rounded-lg hover:bg-secondary/5 dark:hover:bg-primary/5 transition-colors"
-                >
-                  <span class="shrink-0 text-primary/40 font-mono mt-0.5">•</span>
-                  <p class="flex-1">{{ lead.trim() }}</p>
+              <!-- Leads Section (Individually copyable) -->
+              <div class="space-y-4" v-if="metadata.leads">
+                <div class="flex items-center justify-between border-b border-secondary/10 dark:border-dark-border pb-2">
+                  <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest">Ganchos (Individuales)</h4>
                   <button 
-                    @click="copyField(lead.trim(), `lead-${idx}`)"
-                    class="shrink-0 p-1.5 rounded-md bg-secondary/5 dark:bg-dark-surface opacity-0 group-hover/lead:opacity-100 transition-all hover:bg-primary/10 text-secondary hover:text-primary"
-                    title="Copiar este gancho"
+                    @click="copyField(metadata.leads, 'leads-all')" 
+                    class="text-[9px] font-bold text-primary hover:underline transition-all flex items-center gap-1"
                   >
-                    <svg v-if="copiedField === `lead-${idx}`" class="h-3.5 w-3.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
-                    <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <svg v-if="copiedField !== 'leads-all'" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                    <svg v-else class="h-2.5 w-2.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
+                    {{ copiedField === 'leads-all' ? '¡Copiados!' : 'Copiar Todos' }}
                   </button>
+                </div>
+                <div class="space-y-3 pl-1">
+                  <div 
+                    v-for="(lead, idx) in metadata.leads.split(/\n\n+|(?<=\.)\s+(?=[¿¡A-Z])|(?<=\?)\s+(?=[¿¡A-Z])|(?<=!)\s+(?=[¿¡A-Z])/).filter(l => l.trim().length > 0)" 
+                    :key="idx" 
+                    class="group/lead relative flex gap-3 text-[11px] text-text dark:text-dark-text leading-relaxed p-2 rounded-lg hover:bg-secondary/5 dark:hover:bg-primary/5 transition-colors"
+                  >
+                    <span class="shrink-0 text-primary/40 font-mono mt-0.5">•</span>
+                    <p class="flex-1">{{ lead.trim() }}</p>
+                    <button 
+                      @click="copyField(lead.trim(), `lead-${idx}`)"
+                      class="shrink-0 p-1.5 rounded-md bg-secondary/5 dark:bg-dark-surface opacity-0 group-hover/lead:opacity-100 transition-all hover:bg-primary/10 text-secondary hover:text-primary"
+                      title="Copiar este gancho"
+                    >
+                      <svg v-if="copiedField === `lead-${idx}`" class="h-3.5 w-3.5 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" /></svg>
+                      <svg v-else class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+
+              <!-- Newsletter Section -->
+              <div class="space-y-4">
+                <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Email Newsletter</h4>
+                
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Asunto</label>
+                    <button @click="copyField(metadata.emailTitle, 'em_title')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'em_title' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-400 transition-colors">{{ metadata.emailTitle }}</div>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Cuerpo</label>
+                    <button @click="copyField(metadata.emailText, 'em_text')" class="text-[9px] font-bold text-primary hover:underline">
+                      {{ copiedField === 'em_text' ? '¡Hecho!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <div class="px-2.5 py-2 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-[10px] text-indigo-700/80 dark:text-indigo-400/80 whitespace-pre-wrap transition-colors">{{ metadata.emailText }}</div>
                 </div>
               </div>
             </div>
+          </aside>
 
-
-            <!-- Newsletter Section -->
-            <div class="space-y-4">
-              <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Email Newsletter</h4>
-              
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Asunto</label>
-                  <button @click="copyField(metadata.emailTitle, 'em_title')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'em_title' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
-                </div>
-                <div class="px-2.5 py-2 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-700 dark:text-indigo-400 transition-colors">{{ metadata.emailTitle }}</div>
-              </div>
-
-              <div class="flex flex-col gap-1.5">
-                <div class="flex items-center justify-between">
-                  <label class="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Cuerpo</label>
-                  <button @click="copyField(metadata.emailText, 'em_text')" class="text-[9px] font-bold text-primary hover:underline">
-                    {{ copiedField === 'em_text' ? '¡Hecho!' : 'Copiar' }}
-                  </button>
-                </div>
-                <div class="px-2.5 py-2 bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-500/20 rounded-lg text-[10px] text-indigo-700/80 dark:text-indigo-400/80 whitespace-pre-wrap transition-colors">{{ metadata.emailText }}</div>
-              </div>
-            </div>
-          </div>
+          <!-- COMPARATOR TAB -->
+          <aside 
+            v-if="competitorUrl && activeSidebarTab === 'comparator'" 
+            class="absolute inset-0 flex flex-col overflow-hidden"
+          >
+            <ComparatorSidebar :competitor-url="competitorUrl" />
           </aside>
 
         </div>

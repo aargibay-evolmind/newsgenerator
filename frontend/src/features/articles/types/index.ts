@@ -147,5 +147,6 @@ export interface AnalyzeCompetitorResponse {
     text: string;
     length: number;
   }[];
+  suggestedHeaders: string[];
   competitor_url?: string;
 }

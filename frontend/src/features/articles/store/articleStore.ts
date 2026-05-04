@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import type { OutlineItem, ReferenceLink, LeadItem } from '../types';
+import { BLOGS, type Blog } from '../constants/blogs';
 
 export type ContentMode = 'quick-guide' | 'news-brief' | 'deep-dive' | 'storytelling' | null;
 
@@ -44,7 +45,42 @@ export const useArticleStore = defineStore('article', () => {
 
   // Content Mode
   const contentMode = ref<ContentMode>(null);
+  
+  // Custom Blogs Management
+  const customBlogs = ref<Blog[]>([]);
+  
+  // Load custom blogs from localStorage on initialization
+  try {
+    const stored = localStorage.getItem('newsgenerator_custom_blogs');
+    if (stored) {
+      customBlogs.value = JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Failed to load custom blogs from localStorage', e);
+  }
+
+  // Merged available blogs
+  const availableBlogs = computed(() => {
+    return [...BLOGS, ...customBlogs.value];
+  });
+
   const selectedBlogId = ref<number | null>(null);
+
+  function addCustomBlog(name: string, url: string) {
+    const newId = Date.now(); // Generate a unique ID (timestamp-based to avoid collision with standard 1-2 digit IDs)
+    const newBlog: Blog = { id: newId, name, url };
+    
+    customBlogs.value.push(newBlog);
+    
+    // Persist to localStorage
+    try {
+      localStorage.setItem('newsgenerator_custom_blogs', JSON.stringify(customBlogs.value));
+    } catch (e) {
+      console.error('Failed to save custom blog to localStorage', e);
+    }
+    
+    return newId;
+  }
 
   // Step 2 State (Config)
   const toneValue = ref(0);
@@ -206,6 +242,8 @@ export const useArticleStore = defineStore('article', () => {
     audienceValue,
     searchIntent,
     contentMode,
+    customBlogs,
+    availableBlogs,
     selectedBlogId,
     toneValue,
     includeLists,
@@ -215,6 +253,7 @@ export const useArticleStore = defineStore('article', () => {
     suggestedLinks,
     uploadedImages,
     // Actions
+    addCustomBlog,
     getAudienceLabel,
     getToneLabel,
     applyModePresets,

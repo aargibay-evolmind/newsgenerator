@@ -80,6 +80,9 @@ function handleDelete() {
         </div>
 
         <header class="mb-12">
+          <h1 class="text-3xl sm:text-4xl font-extrabold text-text dark:text-dark-text leading-tight tracking-tight mb-6">
+            {{ article.title }}
+          </h1>
           <div class="flex items-center gap-3 mb-6">
             <span v-if="article.data?.readingTime" class="px-2.5 py-1 bg-primary/5 text-[10px] font-black text-primary rounded-full uppercase tracking-wider flex items-center gap-1">
               <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

@@ -2,14 +2,14 @@
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useArticleStore } from '../../articles/store/articleStore'
-import { BLOGS } from '../constants/blogs'
 import { 
   useSuggestTopics, 
   useUrlScraping, 
   useGenerateOutline, 
   useGenerateArticle,
   useSaveArticle,
-  useSyncKnowledgeBase
+  useSyncKnowledgeBase,
+  useSuggestHeading
 } from '../../articles/composables'
 import MainHeader from '@/components/MainHeader.vue';
 import GenerationProgress from '../components/GenerationProgress.vue'
@@ -32,6 +32,7 @@ const {
   audienceValue,
   searchIntent,
   contentMode,
+  availableBlogs,
   selectedBlogId,
   toneValue,
   includeLists,
@@ -53,6 +54,7 @@ const { mutateAsync: generateOutline, isPending: architectLoading } = useGenerat
 const { mutateAsync: generateArticle, isPending: generateLoading } = useGenerateArticle()
 const { mutateAsync: saveArticleMutation, isPending: isSavingArticle } = useSaveArticle()
 const { mutate: syncKB } = useSyncKnowledgeBase()
+const { mutateAsync: suggestHeading, isPending: suggestHeadingLoading } = useSuggestHeading()
 
 onMounted(() => {
   syncKB()
@@ -75,6 +77,8 @@ const generationResult = ref<'success' | 'placeholder' | 'error' | null>(null)
 const titleError = ref(false)
 const sectionCountError = ref(false)
 const suggestedTopics = ref<string[]>([])
+const competitorSuggestions = ref<Array<{ id: number; text: string; included: boolean; budget: 'short' | 'medium' | 'long'; infographic: boolean }>>([]);
+const competitorMarkdown = ref('');
 const intentDescriptions: Record<string, string> = {
   'Informativo': 'Explica hechos, datos y conceptos generales.',
   'Tutorial': 'Guía paso a paso para realizar una tarea o trámite.',
@@ -207,6 +211,21 @@ function removeScrapedLink(url: string, type: 'example' | 'authority') {
   }
 }
 
+function handleCompetitorHeaders(payload: { headers: Array<{ text: string; length: number }>, markdown?: string }) {
+  // Store competitor suggestions in a SEPARATE ref — do not touch outlineList
+  competitorSuggestions.value = payload.headers.map((h, idx) => ({
+    id: 8000 + idx,
+    text: h.text,
+    included: false, // unchecked by default
+    budget: 'medium' as const,
+    infographic: false,
+  }));
+  
+  if (payload.markdown) {
+    competitorMarkdown.value = payload.markdown;
+  }
+}
+
 async function handleProceedToArchitect() {
   if (architectLoading.value) return;
   isArticleSaved.value = false;
@@ -275,7 +294,38 @@ function goNext(step: number) {
 // Step 2: Architect Outline
 
 function addHeading() {
-  outlineList.value.push({ id: Date.now(), text: 'Nuevo Encabezado', included: true })
+  outlineList.value.push({ 
+    id: Date.now(), 
+    text: 'Nuevo Encabezado', 
+    included: true,
+    budget: 'medium',
+    infographic: false,
+    influenced_by_competitor: false
+  })
+}
+
+async function addSuggestedHeading() {
+  if (suggestHeadingLoading.value) return;
+  
+  try {
+    const currentTexts = outlineList.value.map((h: any) => h.text);
+    const response = await suggestHeading({
+      title: blogTitle.value,
+      currentOutline: currentTexts
+    });
+    
+    outlineList.value.push({ 
+      id: Date.now(), 
+      text: response.heading, 
+      included: true,
+      budget: 'medium',
+      infographic: false, 
+      influenced_by_competitor: false
+    });
+  } catch (error) {
+    console.error('Error suggesting heading:', error);
+    addHeading(); // Fallback to empty
+  }
 }
 
 function removeHeading(id: number) {
@@ -417,7 +467,14 @@ async function handleGenerateArticle() {
   isGeneratingArticle.value = true;
   try {
     generationResult.value = null;
-    const response = await generateArticle(store.getGenerateArticlePayload())
+    const checkedSuggestions = competitorSuggestions.value
+      .filter(s => s.included)
+      .map(s => ({ ...s, influenced_by_competitor: true }));
+    const payload = store.getGenerateArticlePayload();
+    if (checkedSuggestions.length > 0) {
+      payload.outline = [...payload.outline, ...checkedSuggestions];
+    }
+    const response = await generateArticle(payload)
     
     if (response.debug) {
       console.log("%c🚀 Article Generation Metrics:", "color: #ff00ff; font-weight: bold; font-size: 14px;");
@@ -523,6 +580,24 @@ function insertImage(img: { id: string; name: string; data: string }) {
   generatedMarkdown.value = (generatedMarkdown.value || '') + '\n' + refLink + refData
 }
 
+// Custom Blog Logic
+const showAddBlogForm = ref(false)
+const newCustomBlogName = ref('')
+const newCustomBlogUrl = ref('')
+
+function handleSaveCustomBlog() {
+  if (newCustomBlogName.value.trim() && newCustomBlogUrl.value.trim()) {
+    const newId = store.addCustomBlog(newCustomBlogName.value.trim(), newCustomBlogUrl.value.trim())
+    selectedBlogId.value = newId
+    showAddBlogForm.value = false
+    newCustomBlogName.value = ''
+    newCustomBlogUrl.value = ''
+    
+    successMessage.value = "Blog añadido correctamente a esta sesión."
+    setTimeout(() => { successMessage.value = null }, 3000)
+  }
+}
+
 // Global scroll lock for Step 3 - Force absolute height and overflow hidden
 watch(currentStep, (newStep) => {
   if (typeof window !== 'undefined') {
@@ -617,10 +692,10 @@ onUnmounted(() => {
     <GenerationStepper v-model="currentStep" />
 
     <!-- Content Area Container -->
-    <div :class="['flex-1 flex flex-col w-full min-h-0', currentStep === 3 ? 'h-[calc(100vh-105px)] overflow-hidden' : 'overflow-y-auto']">
+    <div :class="['flex-1 flex flex-col w-full min-h-0', (currentStep === 3 || (currentStep === 2 && scrapedAuthorityUrls.length > 0)) ? 'h-[calc(100vh-105px)] overflow-hidden' : 'overflow-y-auto']">
       
       <!-- Main Content -->
-      <main :class="['transition-all duration-300 flex-1 flex flex-col min-h-0 mx-auto w-full transition-all duration-300', currentStep === 3 ? 'max-w-none px-4 h-full py-2' : 'max-w-7xl px-6 sm:px-12 lg:px-16 py-8 sm:py-12 mb-20']">
+      <main :class="['transition-all duration-300 flex-1 flex flex-col min-h-0 mx-auto w-full', currentStep === 3 || (currentStep === 2 && scrapedAuthorityUrls.length > 0) ? 'max-w-none px-0 h-full' : 'max-w-7xl px-6 sm:px-12 lg:px-16 py-8 sm:py-12 mb-20']">
       
       <transition 
         enter-active-class="transition-opacity duration-300 ease-out" 
@@ -1088,34 +1163,87 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- STEP 2: THE ARCHITECT -->
-        <div v-else-if="currentStep === 2" class="flex gap-8 max-w-7xl mx-auto w-full transition-all duration-300" :class="scrapedExampleUrls.length > 0 ? 'h-[calc(100vh-105px)] overflow-hidden max-w-[1400px]' : 'flex-col pb-10'" key="step2">
-          
+        <!-- STEP 2: ARCHITECT (Outline & Settings) -->
+        <div 
+          v-else-if="currentStep === 2" 
+          class="flex flex-col lg:flex-row w-full transition-all duration-300 h-[calc(100vh-140px)] overflow-hidden bg-background" 
+          key="step2"
+        >
           <!-- MAIN AREA: OUTLINE -->
-          <div :class="['flex-1 flex flex-col gap-8 transition-all duration-300 min-w-0', scrapedExampleUrls.length > 0 ? 'overflow-y-auto pr-4 pb-20 custom-scrollbar' : '']">
+          <div 
+            class="flex-1 flex flex-col gap-8 min-w-0 overflow-y-auto pb-20 custom-scrollbar px-6 lg:px-12 pt-8"
+          >
             <div class="space-y-6">
             <!-- Blog Selection Card -->
             <div class="w-full bg-background dark:bg-dark-surface rounded-2xl shadow-sm border border-secondary/10 dark:border-dark-border p-6 flex flex-col ring-1 ring-text/5 dark:ring-white/5 transition-colors">
-              <div class="flex items-center gap-2 mb-1">
+              <div class="flex items-center justify-between gap-2 mb-1">
                 <h2 class="text-lg font-bold text-text dark:text-dark-text flex items-center gap-2">
                   <svg class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                   Destino de Publicación
                 </h2>
+                <button 
+                  v-if="!showAddBlogForm"
+                  @click="showAddBlogForm = true" 
+                  class="text-[10px] font-bold text-primary hover:text-primary/80 uppercase tracking-wider px-2 py-1 bg-primary/5 rounded border border-primary/10 transition-colors flex items-center gap-1"
+                >
+                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                  Añadir
+                </button>
               </div>
               <p class="text-sm text-secondary dark:text-dark-text/40 mb-6">Selecciona el blog donde se publicará esta noticia para optimizar el enfoque.</p>
               
-              <div class="relative group">
+              <div v-if="!showAddBlogForm" class="relative group">
                 <select 
                   v-model="selectedBlogId"
                   class="block w-full rounded-xl border-0 py-3.5 pl-4 pr-10 text-text dark:text-dark-text bg-secondary/5 dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all appearance-none cursor-pointer hover:bg-secondary/10 dark:hover:bg-dark-surface"
                 >
                   <option :value="null">Seleccionar blog de destino...</option>
-                  <option v-for="blog in BLOGS" :key="blog.id" :value="blog.id">
+                  <option v-for="blog in availableBlogs" :key="blog.id" :value="blog.id">
                     {{ blog.name }} ({{ blog.url.replace('https://', '') }})
                   </option>
                 </select>
                 <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-secondary/40">
                   <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 01.04-1.06z" clip-rule="evenodd" /></svg>
+                </div>
+              </div>
+
+              <!-- Add Custom Blog Form -->
+              <div v-else class="animate-in fade-in slide-in-from-top-2 duration-200">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label class="block text-[11px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1.5 ml-1">Nombre del Blog</label>
+                    <input 
+                      v-model="newCustomBlogName"
+                      type="text" 
+                      placeholder="Ej. Mi Blog Personal"
+                      class="block w-full rounded-xl border-0 py-2.5 px-3.5 text-text dark:text-dark-text bg-secondary/5 dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all placeholder:text-secondary/30"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-bold text-secondary dark:text-dark-text/40 uppercase tracking-widest mb-1.5 ml-1">URL Completa</label>
+                    <input 
+                      v-model="newCustomBlogUrl"
+                      @keydown.enter="handleSaveCustomBlog"
+                      type="url" 
+                      placeholder="https://..."
+                      class="block w-full rounded-xl border-0 py-2.5 px-3.5 text-text dark:text-dark-text bg-secondary/5 dark:bg-dark-background shadow-sm ring-1 ring-inset ring-secondary/20 dark:ring-dark-border focus:outline-none focus:ring-2 focus:ring-primary text-sm transition-all placeholder:text-secondary/30"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button 
+                    @click="handleSaveCustomBlog"
+                    :disabled="!newCustomBlogName.trim() || !newCustomBlogUrl.trim()"
+                    class="flex-1 flex justify-center items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Guardar
+                  </button>
+                  <button 
+                    @click="showAddBlogForm = false; newCustomBlogName = ''; newCustomBlogUrl = ''"
+                    class="flex-1 rounded-xl bg-secondary/10 dark:bg-dark-background px-4 py-2 text-sm font-semibold text-text dark:text-dark-text hover:bg-secondary/20 dark:hover:bg-dark-surface transition-colors border border-secondary/20 dark:border-dark-border shadow-sm content-center"
+                  >
+                    Cancelar
+                  </button>
                 </div>
               </div>
             </div>
@@ -1143,12 +1271,8 @@ onUnmounted(() => {
                     @dragover.prevent
                     @dragenter.prevent
                     @drop="onDrop(index)"
-                    class="group flex items-center gap-3 bg-background border rounded-xl p-3 transition-all cursor-move border-secondary/20 dark:border-dark-border" 
-                    :class="{
-                      'border-dashed border-secondary/30 dark:border-primary/30 bg-secondary/5 dark:bg-primary/5 opacity-40': draggedItemIndex === index,
-                      'hover:border-secondary/30 dark:hover:border-primary/30 hover:bg-secondary/5 dark:hover:bg-primary/5 dark:bg-dark-background': (!item.influenced_by_competitor || draggedItemIndex === index),
-                      'border-orange-500/50 bg-orange-50/50 dark:bg-orange-900/10 dark:border-orange-500/30 inset-ring-1 inset-ring-orange-500/20 shadow-sm': item.influenced_by_competitor && draggedItemIndex !== index
-                    }">
+                    class="group flex items-center gap-3 bg-background border rounded-xl p-3 transition-all cursor-move border-secondary/20 dark:border-dark-border dark:bg-dark-background hover:border-secondary/30 dark:hover:border-primary/30 hover:bg-secondary/5 dark:hover:bg-primary/5" 
+                    :class="{ 'border-dashed border-secondary/30 bg-secondary/5 opacity-40': draggedItemIndex === index }">
                   
                   <!-- Drag Handle -->
                   <span class="cursor-grab text-secondary/30 hover:text-secondary shrink-0">
@@ -1165,16 +1289,14 @@ onUnmounted(() => {
                     <input 
                       type="text" 
                       v-model="item.text" 
-                      class="text-sm font-semibold flex-grow border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-1 transition-all" 
-                      :class="item.influenced_by_competitor ? 'text-orange-900 dark:text-orange-100' : 'text-text dark:text-dark-text'"
+                      class="text-sm font-semibold flex-grow border-0 border-b border-transparent focus:border-primary focus:ring-0 bg-transparent px-1 py-1 transition-all text-text dark:text-dark-text"
                     />
                     
                     <!-- Budget Selector -->
                     <select
                       v-if="item.included"
                       v-model="item.budget"
-                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-secondary/40 dark:focus:ring-primary/40 cursor-pointer"
-                      :class="item.influenced_by_competitor ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 ring-1 ring-inset ring-orange-200 dark:ring-orange-500/20' : 'text-secondary dark:text-dark-text/60 bg-secondary/5 dark:bg-dark-surface ring-1 ring-inset ring-secondary/20 dark:ring-dark-border'"
+                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-secondary/40 dark:focus:ring-primary/40 cursor-pointer text-secondary dark:text-dark-text/60 bg-secondary/5 dark:bg-dark-surface ring-1 ring-inset ring-secondary/20 dark:ring-dark-border"
                     >
                       <option value="short">Breve (~100 palabras)</option>
                       <option value="medium">Normal (~250 palabras)</option>
@@ -1211,11 +1333,69 @@ onUnmounted(() => {
                 </li>
               </ul>
               
+              <!-- Competitor-Suggested Headers (separate section) -->
+              <div v-if="competitorSuggestions.length > 0" class="mt-6 pt-5 border-t-2 border-dashed border-orange-200 dark:border-orange-800/40">
+                <div class="flex items-center gap-2 mb-3">
+                  <div class="h-5 w-5 rounded-md bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0">
+                    <svg class="h-3 w-3 text-orange-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                  </div>
+                  <span class="text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-widest">Sugerencias del Artículo Competidor</span>
+                  <span class="text-[9px] text-secondary/40 dark:text-dark-text/30 ml-1">— activa los que quieras incluir en tu artículo</span>
+                </div>
+                <ul class="space-y-2">
+                  <li v-for="item in competitorSuggestions" :key="item.id"
+                    class="group flex items-center gap-3 bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200/60 dark:border-orange-700/30 rounded-xl p-3 transition-all"
+                  >
+                    <div class="flex items-center shrink-0">
+                      <input type="checkbox" v-model="item.included" class="h-4 w-4 rounded border-orange-300 text-orange-500 focus:ring-orange-400 transition duration-150 cursor-pointer" />
+                    </div>
+                    <input
+                      type="text"
+                      v-model="item.text"
+                      class="text-sm font-semibold flex-grow border-0 border-b border-transparent focus:border-orange-400 focus:ring-0 bg-transparent px-1 py-1 transition-all text-orange-900 dark:text-orange-100"
+                    />
+                    <select
+                      v-if="item.included"
+                      v-model="item.budget"
+                      class="shrink-0 rounded-lg border-0 py-1 pl-2 pr-7 text-xs font-semibold focus:outline-none focus:ring-2 cursor-pointer bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200 ring-1 ring-inset ring-orange-200 dark:ring-orange-500/20"
+                    >
+                      <option value="short">Breve (~100 palabras)</option>
+                      <option value="medium">Normal (~250 palabras)</option>
+                      <option value="long">Extenso (~500 palabras)</option>
+                    </select>
+                    <button @click="competitorSuggestions = competitorSuggestions.filter(s => s.id !== item.id)" class="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0 text-orange-400 hover:text-red-500">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l-.3-7.5z" clip-rule="evenodd" /></svg>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
               <div class="mt-4 flex flex-wrap items-center justify-between pt-4 border-t border-secondary/10 gap-3">
-                <div class="flex gap-2 flex-wrap">
-                  <button @click="addHeading" class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary px-3 py-2 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/10">
-                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
-                    Encabezado
+                <div class="flex items-center gap-3 flex-wrap">
+                  <!-- Empty Heading Button -->
+                  <button 
+                    @click="addHeading" 
+                    class="inline-flex items-center gap-1.5 text-xs font-bold text-primary px-4 py-2.5 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/20 transition-all shadow-sm"
+                  >
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>
+                    Nuevo Encabezado
+                  </button>
+
+                  <!-- Suggested Heading Button -->
+                  <button 
+                    @click="addSuggestedHeading" 
+                    :disabled="suggestHeadingLoading"
+                    class="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2.5 bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/20 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed group mr-auto sm:mr-0"
+                  >
+                    <template v-if="suggestHeadingLoading">
+                      <svg class="animate-spin h-3.5 w-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      <span class="text-primary italic">Generando...</span>
+                    </template>
+                    <template v-else>
+                      <span class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent group-hover:scale-105 transition-transform">
+                        ✨ Sugerir con IA
+                      </span>
+                    </template>
                   </button>
                 </div>
 
@@ -1334,13 +1514,13 @@ onUnmounted(() => {
             </button>
           </div> <!-- Ends Action bar -->
           
-          </div> <!-- Ends flex-1 main column -->
+          </div> <!-- Ends MAIN AREA: OUTLINE -->
           
           <ComparatorSidebar
-            v-if="scrapedExampleUrls && scrapedExampleUrls.length > 0"
-            :competitor-url="scrapedExampleUrls[0]?.url || ''"
-            class="hidden lg:flex w-[350px] shrink-0 border-l border-secondary/10 dark:border-dark-border rounded-xl shadow-sm h-full"
-            @close="removeScrapedLink(scrapedExampleUrls[0]?.url || '', 'example')"
+            v-if="scrapedAuthorityUrls && scrapedAuthorityUrls.length > 0"
+            :competitor-url="scrapedAuthorityUrls[0]?.url || ''"
+            class="hidden lg:flex w-[380px] shrink-0 border-l border-secondary/10 dark:border-dark-border h-full shadow-2xl bg-slate-50 dark:bg-dark-surface z-10"
+            @analysis-complete="handleCompetitorHeaders"
           />
         </div>
 
@@ -1353,6 +1533,8 @@ onUnmounted(() => {
           :is-saving="isSavingArticle"
           :is-saved="isArticleSaved"
           :metadata="articleMetadata"
+          :competitor-url="scrapedAuthorityUrls.length > 0 ? scrapedAuthorityUrls[0]?.url : ''"
+          :competitor-markdown="competitorMarkdown"
           @save="saveArticleToDb"
           @back="goNext(2)"
         />

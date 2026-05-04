@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { onMounted, watch, computed, ref } from 'vue';
+import { onMounted, watch } from 'vue';
+import { computed } from 'vue';
 import { useAnalyzeCompetitor } from '../composables/useAnalyzeCompetitor';
-import { apiClient } from '@/lib/apiClient';
-import type { AnalyzeCompetitorResponse } from '../types';
 
 const props = defineProps<{
   competitorUrl: string;
 }>();
 
-const { mutate: analyzeCompetitor, data, isPending, isError, error } = useAnalyzeCompetitor();
+const emit = defineEmits<{
+  'analysis-complete': [payload: { headers: Array<{ text: string; length: number }>, markdown?: string }]
+}>();
+
+const { mutateAsync: analyzeCompetitor, data, isPending, isError, error } = useAnalyzeCompetitor();
 
 const errorMessage = computed(() => {
   if (error.value && typeof error.value === 'object' && 'message' in error.value) {
@@ -24,55 +27,27 @@ const errorMessage = computed(() => {
   return 'No se ha podido analizar la URL.';
 });
 
-onMounted(() => {
-  if (props.competitorUrl) {
-    analyzeCompetitor({
-      competitorUrl: props.competitorUrl
-    });
-  }
-});
-
-// If the competitor URL changes while mounted, re-fetch.
-watch(() => props.competitorUrl, (newUrl) => {
-  if (newUrl) {
-    analyzeCompetitor({
-      competitorUrl: newUrl
-    });
-  }
-});
-
-const isDownloading = ref(false);
-
-async function downloadMarkdown() {
-  if (isDownloading.value) return;
-  
-  isDownloading.value = true;
+async function triggerAnalysis(url: string) {
+  if (!url) return;
   try {
-    const response = await apiClient<AnalyzeCompetitorResponse>('/articles/analyze-competitor', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        competitorUrl: props.competitorUrl,
-        includeMarkdown: true
-      })
-    });
+    const result = await analyzeCompetitor({ competitorUrl: url, includeMarkdown: true });
     
-    if (response.markdown) {
-      const blob = new Blob([response.markdown], { type: 'text/markdown;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `competencia-${new URL(props.competitorUrl).hostname}.md`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  } catch (err) {
-    console.error("Failed to download markdown", err);
-    alert('Error al generar el Markdown. Es posible que se haya excedido el límite de la API.');
-  } finally {
-    isDownloading.value = false;
+    const headers = result?.suggestedHeaders?.map((text: string) => ({ text, length: 200 })) || [];
+    emit('analysis-complete', { 
+      headers, 
+      markdown: result?.markdown 
+    });
+  } catch (e) {
+    // Error state is handled reactively via isError / error refs in the template
+    console.error('[ComparatorSidebar] Analysis failed:', e);
   }
 }
+
+onMounted(() => triggerAnalysis(props.competitorUrl));
+
+// Re-trigger if the competitor URL changes while mounted
+watch(() => props.competitorUrl, (newUrl) => triggerAnalysis(newUrl));
+
 </script>
 
 <template>
@@ -110,31 +85,23 @@ async function downloadMarkdown() {
       
       <!-- Competitor Link -->
       <div class="bg-orange-50/50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 rounded-xl p-3">
-        <p class="text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-1">Rival analizado</p>
+        <p class="text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-1">Artículo analizado</p>
         <a :href="props.competitorUrl" target="_blank" rel="noopener noreferrer" class="text-[10px] text-text dark:text-dark-text hover:text-orange-500 font-mono truncate block" :title="props.competitorUrl">
           {{ props.competitorUrl }}
         </a>
       </div>
 
-      <!-- Action Button -->
-      <button @click="downloadMarkdown" :disabled="isDownloading" class="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-text dark:bg-dark-text text-background dark:text-dark-background rounded-xl text-xs font-bold transition-all hover:bg-opacity-90 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-        <svg v-if="isDownloading" class="animate-spin h-4 w-4 text-background dark:text-dark-background" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-        <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-        {{ isDownloading ? 'Procesando (Tarda...' : 'Descargar Artículo (.MD)' }}
-      </button>
-
-      <!-- Total Length -->
       <div class="space-y-4">
-        <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Extensión Total</h4>
+        <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Tiempo de Lectura</h4>
         <div class="bg-background dark:bg-dark-background border border-secondary/20 dark:border-dark-border rounded-xl p-3 shadow-sm flex items-end justify-between">
-          <span class="text-2xl font-black text-text dark:text-dark-text leading-none">{{ data.totalLength }}</span>
-          <span class="text-xs text-secondary/60 dark:text-dark-text/50 font-bold mb-0.5">palabras</span>
+          <span class="text-2xl font-black text-text dark:text-dark-text leading-none">{{ Math.max(1, Math.ceil(data.totalLength / 225)) }}</span>
+          <span class="text-xs text-secondary/60 dark:text-dark-text/50 font-bold mb-0.5">minutos</span>
         </div>
       </div>
 
       <!-- Keywords Comp -->
       <div class="space-y-4">
-        <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Palabras Clave (Top)</h4>
+        <h4 class="text-[10px] font-black text-secondary/40 dark:text-dark-text/30 uppercase tracking-widest border-b border-secondary/10 dark:border-dark-border pb-2">Palabras Clave</h4>
         <div class="flex flex-wrap gap-1.5">
           <span v-for="kw in data.keywords" :key="kw" class="px-2 py-1 bg-secondary/10 dark:bg-dark-surface text-text dark:text-dark-text text-[10px] font-medium rounded-md border border-secondary/20 dark:border-dark-border">
             {{ kw }}
@@ -152,7 +119,7 @@ async function downloadMarkdown() {
         <ul class="space-y-2">
           <li v-for="(header, idx) in data.headers" :key="idx" class="flex flex-col bg-background dark:bg-dark-surface border border-secondary/10 dark:border-dark-border rounded-lg p-2.5 transition-all">
             <span class="text-[11px] text-text dark:text-dark-text font-bold mb-1">{{ header.text }}</span>
-            <span class="text-[10px] text-orange-600 dark:text-orange-400 font-semibold">{{ header.length }} palabras</span>
+            <span class="text-[10px] text-orange-600 dark:text-orange-400 font-semibold">{{ Math.max(1, Math.ceil(header.length / 225)) }} min</span>
           </li>
         </ul>
       </div>
@@ -160,4 +127,3 @@ async function downloadMarkdown() {
     </div>
   </div>
 </template>
-

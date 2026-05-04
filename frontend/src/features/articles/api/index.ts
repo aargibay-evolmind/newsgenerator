@@ -12,8 +12,8 @@ import type {
   RegenerateSectionResponse,
   SaveArticleRequest,
   SavedArticle,
-  CompareArticleRequest,
-  CompareArticleResponse
+  AnalyzeCompetitorRequest,
+  AnalyzeCompetitorResponse
 } from '../types';
 
 export const ArticleAPI = {
@@ -79,8 +79,8 @@ export const ArticleAPI = {
       method: 'POST'
     }),
 
-  compareArticle: (data: CompareArticleRequest) =>
-    apiClient<CompareArticleResponse>('/articles/compare', {
+  compareArticle: (data: AnalyzeCompetitorRequest) =>
+    apiClient<AnalyzeCompetitorResponse>('/articles/compare', {
       method: 'POST',
       body: JSON.stringify(data)
     })

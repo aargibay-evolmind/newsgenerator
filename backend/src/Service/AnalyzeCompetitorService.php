@@ -32,10 +32,12 @@ class AnalyzeCompetitorService
             $prompt .= "Extrae el contenido completo y conviértelo a Markdown puro.\n";
         }
 
-        $prompt .= "Identifica todos los encabezados del artículo, estima la longitud (en número de palabras) de la sección que le sigue a cada encabezado, la longitud total del artículo, y las 3-5 palabras clave principales.
-        
-        [Artículo Competencia]
-        " . $competitorText;
+        $prompt .= "Instrucciones de análisis:\n";
+        $prompt .= "1. El contenido está estructurado con prefijos como 'H1:', 'H2:', 'H3:' para identificar los encabezados del artículo.\n";
+        $prompt .= "2. Usa esos prefijos para identificar la jerarquía de encabezados del cuerpo del artículo (ignora el H1 si es el título principal de la página).\n";
+        $prompt .= "3. Extrae ÚNICAMENTE los encabezados H2 (ignora H3, H4 y cualquier nivel inferior). Para cada H2 hallado, extrae su texto exacto y estima cuántas palabras tiene su sección.\n";
+        $prompt .= "4. Extrae las 10 palabras clave más relevantes para SEO.\n";
+        $prompt .= "5. Genera entre 5 y 7 títulos de sección (H2) ORIGINALES para un artículo sobre el mismo tema. Inspírate en los temas que cubre el competidor para identificar qué aspectos son relevantes, pero redáctalos de forma completamente diferente, más atractiva y optimizada para SEO. NO copies ni parafrasees directamente los títulos del competidor.\n\n[Texto del Artículo]\n" . $competitorText;
 
         $properties = [
             'totalLength' => ['type' => 'INTEGER', 'description' => 'Número total de palabras estimadas del contenido.'],
@@ -52,10 +54,15 @@ class AnalyzeCompetitorService
                         'length' => ['type' => 'INTEGER', 'description' => 'Estimación de palabras de la sección que pertenece a este encabezado.']
                     ]
                 ]
+            ],
+            'suggestedHeaders' => [
+                'type' => 'ARRAY',
+                'description' => 'Lista de 5 a 7 títulos H2 ORIGINALES sugeridos para el artículo del usuario, inspirados en los temas del competidor pero redactados de forma completamente diferente y optimizados para SEO.',
+                'items' => ['type' => 'STRING']
             ]
         ];
 
-        $required = ['totalLength', 'keywords', 'headers'];
+        $required = ['totalLength', 'keywords', 'headers', 'suggestedHeaders'];
 
         if ($includeMarkdown) {
             $properties['markdown'] = ['type' => 'STRING', 'description' => 'El contenido completo formateado en Markdown.'];
